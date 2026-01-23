@@ -69,6 +69,7 @@ def send_data_block(_socket, idx, data):
     crcv = "%08X" % caculate_crc32(data)
     data_size = "%04X" % (len(data) + 6 + 8)
     data_block = "|SV>GD|DO:".encode("utf-8") + data_size.encode("utf-8") + idxv.encode("utf-8") + data + crcv.encode("utf-8")
+    print(data_block[:40])
     _socket.sendall(data_block)
 
 ######################### func1 upload #######################
@@ -85,11 +86,11 @@ def handle_ue_upload(upload_socket:socket.socket, client_addr:tuple):
         while True:
             data_head = upload_socket.recv(10)
             if not data_head:
-                print("%s[ue upload]%s close(no data)"%(datetime.now(), client_addr))
+                print("[%s]ue(%s) upload close(no data)"%(datetime.now(), client_addr))
                 break
             vidx = data_head.find(b'|GD>SV|RQ:')
             vidy = data_head.find(b'|GD>SV|DO:')
-            print("----->", data_head)
+            print("[%s]ue(%s) receive data:"%(client_addr), data_head)
             if vidx > 0:
                 handle_ue_upload_req(upload_socket, client_addr, upload_text)
             elif vidy > 0:
@@ -97,28 +98,29 @@ def handle_ue_upload(upload_socket:socket.socket, client_addr:tuple):
                 if not r:
                     break
             else:
-                print("%s[ue upload]%s recevie unknow data:%s"%(datetime.now(), client_addr, data_head))
-
+                print("[%s]ue(%s) receive unknow data:%s"%(datetime.now(), client_addr, data_head))
     except Exception as e:
-        pass
+        import traceback
+        print(traceback.format_exc())
 
 def handle_ue_upload_req(upload_socket:socket.socket, client_addr:tuple, upload_text):
     req_type = ""
     try:
         req_len = upload_socket.recv(4)
         if not req_len:
-            print("%s[ue upload]%s close(no data1)"%(datetime.now(), client_addr))
+            print("[%s]ue(%s) request upload close(no data1)"%(datetime.now(), client_addr))
             return False
         data = upload_socket.recv(int(req_len, 16))
         if not data:
-            print("%s[ue upload]%s close(no data2)"%(datetime.now(), client_addr))
+            print("[%s]ue(%s) request upload close(no data2)"%(datetime.now(), client_addr))
             return False
         meta_json = json.loads(data[:-8].decode("utf-8"))
         req_type = meta_json.get("req_type", "")
         if req_type == 'upload':
             handle_ue_upload_details(upload_socket, client_addr, meta_json, upload_text)
     except Exception as e:
-        pass
+        import traceback
+        print(traceback.format_exc())
 
 def handle_ue_upload_details(upload_socket:socket.socket, client_addr:tuple, meta_json, upload_text):
     req_type = meta_json.get("req_type", "")
@@ -126,10 +128,10 @@ def handle_ue_upload_details(upload_socket:socket.socket, client_addr:tuple, met
     file_size = meta_json.get("file_size", 0)
     md5 = meta_json.get("md5", "")
     if not (req_type and filename and md5 and file_size > 0):
-        print("%s[ue upload] %s parameters loss"%(datetime.now(), client_addr))
+        print("[%s]ue(%s) request upload parameters missing"%(datetime.now(), client_addr))
         send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "ERROR1", ERROR_CODE_DIC["ERROR1"], 0)
         return False
-    print("%s[ue upload] %s parameters OK:%s, %s, %s"%(datetime.now(), client_addr, filename, file_size, md5))
+    print("[%s]ue(%s) request upload parameters OK: filename is %s, filesize is %s, md5 is %s"%(datetime.now(), client_addr, filename, file_size, md5))
     tmp_file_name = f"{filename}_{md5}{TEMP_FILE_SUFFIX}"
     temp_file_path = os.path.join(FILE_SAVE_DIR, tmp_file_name)
     fin_file_path = os.path.join(FILE_SAVE_DIR, filename)
@@ -139,7 +141,7 @@ def handle_ue_upload_details(upload_socket:socket.socket, client_addr:tuple, met
         if sv_offset >= file_size:
             os.remove(temp_file_path)
             sv_offset = 0
-        print("server offset is: %s"%(sv_offset))
+        print("[%s]ue(%s) request upload, server offset is: %s"%(datetime.now(), client_addr, sv_offset))
     elif os.path.exists(fin_file_path):
         fin_file_size = os.path.getsize(fin_file_path)
         if fin_file_size == file_size:
@@ -161,11 +163,11 @@ def handle_ue_upload_do(upload_socket:socket.socket, client_addr:tuple, upload_t
     try:
         req_len = upload_socket.recv(4)
         if not req_len:
-            print("%s[ue upload]%s close(no data)"%(datetime.now(), client_addr))
+            print("[%s]ue(%s) upload close(no data3)"%(datetime.now(), client_addr))
             return False
         data = upload_socket.recv(int(req_len, 16))
         if not data:
-            print("%s[ue upload]%s close(no data)"%(datetime.now(), client_addr))
+            print("[%s]ue(%s) upload close(no data4)"%(datetime.now(), client_addr))
             return False
         idx = data[:6]
         data_block = data[6:-8]
@@ -198,53 +200,57 @@ def handle_ue_upload_do(upload_socket:socket.socket, client_addr:tuple, upload_t
             os.rename(tmp_file_path, fin_file_size)
             send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "FINISH", "FINISH", 0)
             upload_text['is_uploading'] = False
-            print("%s [ue upload] % finish"%(datetime.now(), client_addr))
+            print("[%s]ue(%s) upload finish"%(datetime.now(), client_addr))
             return True
         elif int((new_offset / file_size) * 100) % 10 == 0:
             progress = new_offset / file_size
             send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "PROCESS", "%s"%(progress), new_offset)
         return True
     except Exception as e:
+        import traceback
+        print(traceback.format_exc())
         send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "ERRORO", ERROR_CODE_DIC["ERRORO"], 0)
         return False
 
 ############################ ue download ###############################
 def handle_ue_download(download_socket: socket.socket, client_addr: tuple):
-    print("%s new client access:%s" % (datetime.now(), client_addr))
+    print("[%s]new ue(%s) access" % (datetime.now(), client_addr))
     download_socket.settimeout(UE_TIMEOUT)
     download_text = {}
     try:
         while True:
             data_head = download_socket.recv(10)
             if not data_head:
-                print("%s[ue upload]%s close(no data)" % (datetime.now(), client_addr))
+                print("[%s]ue(%s) request download close(no data)" % (datetime.now(), client_addr))
                 break
             vidx = data_head.find(b'|GD>SV|RQ:')
             print("----->", data_head)
             if vidx > 0:
                 handle_ue_upload_req(download_socket, client_addr, download_text)
             else:
-                print("%s[ue upload]%s recevie unknow data:%s" % (datetime.now(), client_addr, data_head))
+                print("[%s]ue(%s) request download receive unknow data:%s" % (datetime.now(), client_addr, data_head))
     except Exception as e:
-        pass
+        import traceback
+        print(traceback.format_exc())
 
 def handle_ue_download_req(download_socket:socket.socket, client_addr:tuple, download_text):
     req_type = ""
     try:
         req_len = download_socket.recv(4)
         if not req_len:
-            print("%s[ue download]%s close(no data1)"%(datetime.now(), client_addr))
+            print("[%s]ue(%s) request download close(no data1)"%(datetime.now(), client_addr))
             return False
         data = download_socket.recv(int(req_len, 16))
         if not data:
-            print("%s[ue download]%s close(no data2)"%(datetime.now(), client_addr))
+            print("[%s]ue(%s) request download close(no data2)"%(datetime.now(), client_addr))
             return False
         meta_json = json.loads(data[:-8].decode("utf-8"))
         req_type = meta_json.get("req_type", "")
         if req_type == 'download':
             handle_ue_upload_details(download_socket, client_addr, meta_json, download_text)
     except Exception as e:
-        pass
+        import traceback
+        print(traceback.format_exc())
 
 def handle_ue_download_details(download_socket:socket.socket, client_addr:tuple, meta_json, download_text):
     req_type = meta_json.get("req_type", "")
@@ -255,10 +261,10 @@ def handle_ue_download_details(download_socket:socket.socket, client_addr:tuple,
     offset = meta_json.get("offset", 0)
     status = meta_json.get("status", "")
     if not (status and offset >= 0 and req_type and filename and md5 and file_size > 0):
-        print("%s[ue upload] %s parameters loss"%(datetime.now(), client_addr))
+        print("[%s]ue(%s) request download parameters missing"%(datetime.now(), client_addr))
         send_stander_ack(download_socket, "|SV>GD|RQ:", 'upload', "ERROR1", ERROR_CODE_DIC["ERROR1"], 0)
         return False
-    print("%s[ue upload] %s parameters OK:%s, %s, %s"%(datetime.now(), client_addr, filename, file_size, md5))
+    print("[%s]ue(%s) request upload parameters OK:%s, %s, %s"%(datetime.now(), client_addr, filename, file_size, md5))
     fin_file_path = os.path.join(FILE_SAVE_DIR, file_dir, filename)
     if status == "OK":
         threading.Thread(target=handle_ue_download_do, args=(download_socket, fin_file_path, meta_json, download_text)).start()
@@ -292,7 +298,7 @@ def start_godot_upload_server():
     godot_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     godot_socket.bind((SERVER_HOST, UE_UPLOAD_PORT))
     godot_socket.listen(MAX_CONNECTIONS)
-    print("ue upload server listen  %s:%s"%(SERVER_HOST, UE_UPLOAD_PORT))
+    print("[%s]ue upload server listen  %s:%s"%(datetime.now(), SERVER_HOST, UE_UPLOAD_PORT))
     while True:
         client_socket, addr = godot_socket.accept()
         threading.Thread(target=handle_ue_upload, args=(client_socket, addr), daemon=True).start()
@@ -301,9 +307,9 @@ def start_godot_upload_server():
 def start_godot_download_server():
     godot_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     godot_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    godot_socket.bind((SERVER_HOST, UE_UPLOAD_PORT))
+    godot_socket.bind((SERVER_HOST, UE_DOWNLOAD_PORT))
     godot_socket.listen(MAX_CONNECTIONS)
-    print("ue upload server listen  %s:%s" % (SERVER_HOST, UE_DOWNLOAD_PORT))
+    print("[%s]ue download server listen  %s:%s" % (datetime.now(), SERVER_HOST, UE_DOWNLOAD_PORT))
     while True:
         client_socket, addr = godot_socket.accept()
         threading.Thread(target=handle_ue_download, args=(client_socket, addr), daemon=True).start()
