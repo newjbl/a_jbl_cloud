@@ -15,7 +15,7 @@ MAX_CONNECTIONS = 10
 
 UE_UPLOAD_PORT = 6666
 UE_UPLOAD_BLOCK_SIZE = 4096
-UE_TIMEOUT =10
+UE_TIMEOUT = 60
 UE_DOWNLOAD_PORT = 7777
 ERROR_CODE_DIC = {
     "ERROR1":'FILE DIC ERROR',
@@ -33,7 +33,7 @@ ERROR_CODE_DIC = {
 }
 
 Path(FILE_SAVE_DIR).mkdir(parents=True, exist_ok=True)
-c_flag = True
+debug_ctl_flag = True
 
 def caculate_crc32(data):
     if isinstance(data, str):
@@ -78,10 +78,11 @@ def handle_ue_upload(upload_socket:socket.socket, client_addr:tuple):
     upload_socket.settimeout(UE_TIMEOUT)
     upload_text = {
         "is_uploading": True,
+        "filename":'',
         "tmp_file_path": '',
         "file_size": 0,
         "offset": 0,
-        "md5": ""}
+        "file_md5": ""}
     try:
         while True:
             data_head = upload_socket.recv(10)
@@ -90,10 +91,10 @@ def handle_ue_upload(upload_socket:socket.socket, client_addr:tuple):
                 break
             vidx = data_head.find(b'|GD>SV|RQ:')
             vidy = data_head.find(b'|GD>SV|DO:')
-            print("[%s]ue(%s) receive data:"%(client_addr), data_head)
-            if vidx > 0:
+            print("[%s]ue(%s) receive data:"%(datetime.now(), client_addr), data_head)
+            if vidx >= 0:
                 handle_ue_upload_req(upload_socket, client_addr, upload_text)
-            elif vidy > 0:
+            elif vidy >= 0:
                 r = handle_ue_upload_do(upload_socket, client_addr, upload_text)
                 if not r:
                     break
@@ -102,6 +103,9 @@ def handle_ue_upload(upload_socket:socket.socket, client_addr:tuple):
     except Exception as e:
         import traceback
         print(traceback.format_exc())
+    finally:
+        upload_socket.close()
+        print("[%s]ue(%s) disconnect"%(datetime.now(), client_addr))
 
 def handle_ue_upload_req(upload_socket:socket.socket, client_addr:tuple, upload_text):
     req_type = ""
@@ -126,13 +130,13 @@ def handle_ue_upload_details(upload_socket:socket.socket, client_addr:tuple, met
     req_type = meta_json.get("req_type", "")
     filename = meta_json.get("filename", "")
     file_size = meta_json.get("file_size", 0)
-    md5 = meta_json.get("md5", "")
-    if not (req_type and filename and md5 and file_size > 0):
+    file_md5 = meta_json.get("file_md5", "")
+    if not (req_type and filename and file_md5 and file_size > 0):
         print("[%s]ue(%s) request upload parameters missing"%(datetime.now(), client_addr))
         send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "ERROR1", ERROR_CODE_DIC["ERROR1"], 0)
         return False
-    print("[%s]ue(%s) request upload parameters OK: filename is %s, filesize is %s, md5 is %s"%(datetime.now(), client_addr, filename, file_size, md5))
-    tmp_file_name = f"{filename}_{md5}{TEMP_FILE_SUFFIX}"
+    print("[%s]ue(%s) request upload parameters OK: filename is %s, filesize is %s, md5 is %s"%(datetime.now(), client_addr, filename, file_size, file_md5))
+    tmp_file_name = f"{filename}_{file_md5}{TEMP_FILE_SUFFIX}"
     temp_file_path = os.path.join(FILE_SAVE_DIR, tmp_file_name)
     fin_file_path = os.path.join(FILE_SAVE_DIR, filename)
     sv_offset = 0
@@ -152,14 +156,15 @@ def handle_ue_upload_details(upload_socket:socket.socket, client_addr:tuple, met
             sv_offset = 0
     upload_text['is_uploading'] = True
     upload_text['tmp_file_path'] = temp_file_path
+    upload_text['filename'] = filename
     upload_text['file_size'] = file_size
     upload_text['offset'] = sv_offset
-    upload_text['md5'] = md5
+    upload_text['file_md5'] = file_md5
     send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', 'OK', '', sv_offset)
     return True
 
 def handle_ue_upload_do(upload_socket:socket.socket, client_addr:tuple, upload_text):
-    global c_flag
+    global debug_ctl_flag
     try:
         req_len = upload_socket.recv(4)
         if not req_len:
@@ -172,7 +177,7 @@ def handle_ue_upload_do(upload_socket:socket.socket, client_addr:tuple, upload_t
         idx = data[:6]
         data_block = data[6:-8]
         crc = int(data[-8:], 16)
-        if upload_text['is_uploading']:
+        if not upload_text['is_uploading']:
             send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "ERROR6", ERROR_CODE_DIC["ERROR6"], 0)
             return False
         crc_check = caculate_crc32(data_block)
@@ -186,18 +191,18 @@ def handle_ue_upload_do(upload_socket:socket.socket, client_addr:tuple, upload_t
             f.write(data_block)
         new_offset = sv_offset + len(data_block)
         upload_text['offset'] = new_offset
-        if c_flag and new_offset / sv_offset > 0.2:
-            c_flag = False
+        if debug_ctl_flag and (new_offset / file_size) > 0.2:
+            debug_ctl_flag = False
             send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "ERROR4", ERROR_CODE_DIC["ERROR4"], 0)
             return False
         if new_offset >= file_size:
-            md5 = upload_text['md5']
+            md5 = upload_text['file_md5']
             md5_check = caculate_md5(tmp_file_path)
             if md5_check != md5:
                 send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "ERROR4", ERROR_CODE_DIC["ERROR4"], 0)
                 return False
-            fin_file_size = upload_text['fin_file_size']
-            os.rename(tmp_file_path, fin_file_size)
+            fin_file_name = os.path.join(FILE_SAVE_DIR, upload_text['filename'])
+            os.rename(tmp_file_path, fin_file_name)
             send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "FINISH", "FINISH", 0)
             upload_text['is_uploading'] = False
             print("[%s]ue(%s) upload finish"%(datetime.now(), client_addr))
@@ -232,7 +237,8 @@ def handle_ue_download(download_socket: socket.socket, client_addr: tuple):
     except Exception as e:
         import traceback
         print(traceback.format_exc())
-
+    finally:
+        download_socket.close()
 def handle_ue_download_req(download_socket:socket.socket, client_addr:tuple, download_text):
     req_type = ""
     try:
@@ -257,14 +263,14 @@ def handle_ue_download_details(download_socket:socket.socket, client_addr:tuple,
     file_dir = meta_json.get("file_dir", "")
     filename = meta_json.get("filename", "")
     file_size = meta_json.get("file_size", 0)
-    md5 = meta_json.get("md5", "")
+    file_md5 = meta_json.get("file_md5", "")
     offset = meta_json.get("offset", 0)
     status = meta_json.get("status", "")
-    if not (status and offset >= 0 and req_type and filename and md5 and file_size > 0):
+    if not (status and offset >= 0 and req_type and filename and file_md5 and file_size > 0):
         print("[%s]ue(%s) request download parameters missing"%(datetime.now(), client_addr))
         send_stander_ack(download_socket, "|SV>GD|RQ:", 'upload', "ERROR1", ERROR_CODE_DIC["ERROR1"], 0)
         return False
-    print("[%s]ue(%s) request upload parameters OK:%s, %s, %s"%(datetime.now(), client_addr, filename, file_size, md5))
+    print("[%s]ue(%s) request upload parameters OK:%s, %s, %s"%(datetime.now(), client_addr, filename, file_size, file_md5))
     fin_file_path = os.path.join(FILE_SAVE_DIR, file_dir, filename)
     if status == "OK":
         threading.Thread(target=handle_ue_download_do, args=(download_socket, fin_file_path, meta_json, download_text)).start()
@@ -273,7 +279,7 @@ def handle_ue_download_details(download_socket:socket.socket, client_addr:tuple,
         send_stander_ack(download_socket, "|SV>GD|RQ:", 'download', "ERROR7", ERROR_CODE_DIC["ERROR7"], offset)
         return False
     md5_check = caculate_md5(fin_file_path)
-    if md5_check != md5:
+    if md5_check != file_md5:
         send_stander_ack(download_socket, "|SV>GD|RQ:", 'download', "ERROR4", ERROR_CODE_DIC["ERROR4"], offset)
     send_stander_ack(download_socket, "|SV>GD|RQ:", 'download', 'OK', '', offset)
     return True
