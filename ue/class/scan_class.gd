@@ -1,0 +1,129 @@
+extends Node
+class_name SCAN_C
+
+var db_path:String = "res://db/files.txt"
+var ingore_file_list:Array = ['files.txt']
+var ignore_ext_list:Array = ['dtmp']
+var scan_thread:Thread = null
+var scan_thread_running:bool = false
+var taskid:String = ''
+var new_files_dic:Dictionary = {}
+
+signal scan_finished(who_i_am:String, taskid:String, req_type:String, result:String)
+
+func _init(_taskid, db) -> void:
+	taskid = _taskid
+	db_path = db
+	scan_finished.connect(_on_scan_status_changed)
+	_init_db()
+	
+func scan_a_dir(scan_root_dir:String) -> void:
+	scan_thread_running = true
+	scan_thread = Thread.new()
+	scan_thread.start(scan_a_dir_thread.bind(scan_root_dir))
+
+func scan_a_dir_thread(scan_root_dir:String) -> void:
+	print('will scan:%s' %[scan_root_dir])
+	get_all_files(scan_root_dir)
+	scan_thread_running = false
+	merger_table()
+	emit_signal("scan_finished", 'scan_class', taskid, 'scan', 'FINISH')
+	
+func merger_table() -> void:
+	var db_dic:Dictionary = read_db()
+	var server_files_dic:Dictionary = db_dic.get('all_files_dic', {})
+	var rename_files_dic:Dictionary = {}
+	var rmv_files_list:Array = []
+	for eachfile in server_files_dic:
+		##remove
+		if eachfile not in server_files_dic:
+			rmv_files_list.append(eachfile)
+	for eachfile in rmv_files_list:
+		print('remove %s'%[eachfile])
+	for eachfile in new_files_dic:
+		var sdic = server_files_dic.get(eachfile, {})
+		var ndic = new_files_dic[eachfile]
+		##add
+		if eachfile not in server_files_dic:
+			print("add %s"%[eachfile])
+			server_files_dic[eachfile] = ndic
+		##mod
+		else:
+			var server_md5 = sdic['md5']
+			var new_md5 = ndic['md5']
+			if server_md5 != new_md5:
+				var bakfile = eachfile.replace(".%s"%[sdic['filetype']], "_bak.%s"%[sdic['filetype']])
+				server_files_dic[bakfile] = sdic
+				server_files_dic[eachfile] = ndic
+				rename_files_dic[eachfile] = bakfile
+				print("mod:%s > %s"%[eachfile, bakfile])
+	write_db({"all_files_dic": server_files_dic, "rename_files_dic": rename_files_dic})
+	
+func get_all_files(scaned_path:String) -> void:
+	var dir:DirAccess = DirAccess.open(scaned_path)
+	if dir == null:
+		print("open dir failed:", scaned_path, " reason:", DirAccess.get_open_error())
+		return
+	dir.list_dir_begin()
+	var current_name:String = dir.get_next()
+	while current_name != "":
+		var current_path:String = scaned_path.path_join(current_name)
+		if dir.current_is_dir():
+			get_all_files(current_path + '/')
+		else:
+			if current_name in ingore_file_list:
+				print("ignore file:%s"%[current_name])
+				current_name = dir.get_next()
+				continue
+			var filetype = current_path.get_extension()
+			if filetype in ignore_ext_list:
+				print("ignore ext file:%s"%[current_name])
+				current_name = dir.get_next()
+				continue
+			var md5:String = FileAccess.get_md5(current_path)
+			#var a = FileAccess.get_modified_time(current_path)
+			var modtime = Time.get_datetime_dict_from_unix_time(FileAccess.get_modified_time(current_path))
+			var filesize = FileAccess.get_size(current_path)
+			var fileloc = "01"
+			if current_path not in new_files_dic:
+				new_files_dic[current_path] = {'md5': md5, 'filename': current_name,
+				'filesize': filesize, 'modtime': modtime, 'filetype': filetype, 'fileloc': fileloc}
+		current_name = dir.get_next()
+	dir.list_dir_end()
+	
+func _init_db() -> bool:
+	if not FileAccess.file_exists(db_path):
+		var f = FileAccess.open(db_path, FileAccess.WRITE)
+		if f:
+			var rt = f.store_string('{}')
+			f.close()
+			return true
+		else:
+			return false
+	return true
+	
+func write_db(indic:Dictionary) -> bool:
+	var jsoner:JSON = JSON.new()
+	var instr:String = jsoner.stringify(indic, '\n')
+	var f = FileAccess.open(db_path, FileAccess.WRITE)
+	if f:
+		var r = f.store_string(instr)
+		f.close()
+		return r
+	return false
+func read_db() -> Dictionary:
+	var f = FileAccess.open(db_path, FileAccess.READ_WRITE)
+	if f:
+		var outstr:String = f.get_as_text()
+		f.close()
+		var jsoner:JSON = JSON.new()
+		var err = jsoner.parse(outstr)
+		if err == Error.OK:
+			return jsoner.data
+	return {}
+
+func _on_scan_status_changed(who_i_am:String, taskid:String, req_type:String, result:String) -> void:
+	print("%s-%s %s %s" % [who_i_am, taskid, req_type, result])
+	
+			
+	

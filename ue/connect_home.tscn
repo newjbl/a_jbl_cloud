@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://b1g5xph773vel"]
+
+[ext_resource type="Script" uid="uid://cynqh42v81hru" path="res://connect_home.gd" id="1_iwraj"]
+
+[node name="connect_home" type="Node2D" unique_id=1961771229]
+script = ExtResource("1_iwraj")
