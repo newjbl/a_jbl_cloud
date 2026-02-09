@@ -2,7 +2,7 @@ extends Node
 class_name SCAN_C
 
 var db_path:String = "res://db/files.txt"
-var ingore_file_list:Array = ['files.txt']
+var ignore_file_list:Array = ['files.txt']
 var ignore_ext_list:Array = ['dtmp']
 var scan_thread:Thread = null
 var scan_thread_running:bool = false
@@ -23,7 +23,7 @@ func scan_a_dir(scan_root_dir:String) -> void:
 	scan_thread.start(scan_a_dir_thread.bind(scan_root_dir))
 
 func scan_a_dir_thread(scan_root_dir:String) -> void:
-	print('will scan:%s' %[scan_root_dir])
+	print('[scan_class]->scan_a_dir_thread:will scan:%s' %[scan_root_dir])
 	get_all_files(scan_root_dir)
 	scan_thread_running = false
 	merger_table()
@@ -36,16 +36,17 @@ func merger_table() -> void:
 	var rmv_files_list:Array = []
 	for eachfile in server_files_dic:
 		##remove
-		if eachfile not in server_files_dic:
+		if eachfile not in new_files_dic:
 			rmv_files_list.append(eachfile)
 	for eachfile in rmv_files_list:
-		print('remove %s'%[eachfile])
+		print('[scan_class]->merger_table:remove %s'%[eachfile])
+		server_files_dic.erase(eachfile)
 	for eachfile in new_files_dic:
 		var sdic = server_files_dic.get(eachfile, {})
 		var ndic = new_files_dic[eachfile]
 		##add
 		if eachfile not in server_files_dic:
-			print("add %s"%[eachfile])
+			print("[scan_class]->merger_table:add %s"%[eachfile])
 			server_files_dic[eachfile] = ndic
 		##mod
 		else:
@@ -71,13 +72,13 @@ func get_all_files(scaned_path:String) -> void:
 		if dir.current_is_dir():
 			get_all_files(current_path + '/')
 		else:
-			if current_name in ingore_file_list:
-				print("ignore file:%s"%[current_name])
+			if current_name in ignore_file_list:
+				print("[scan_class]->get_all_files:ignore file:%s"%[current_name])
 				current_name = dir.get_next()
 				continue
 			var filetype = current_path.get_extension()
 			if filetype in ignore_ext_list:
-				print("ignore ext file:%s"%[current_name])
+				print("[scan_class]->get_all_files:ignore ext file:%s"%[current_name])
 				current_name = dir.get_next()
 				continue
 			var md5:String = FileAccess.get_md5(current_path)

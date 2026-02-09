@@ -55,6 +55,7 @@ func _init(_taskid, rootdir, sip, sport, _usr, _psd, ercnt=3, ow='no') -> void:
 
 ############################## connection ###################
 func connect_to_server() -> void:
+	print("[tcp_transf_class]->connect_to_server.")
 	var socket_status = _socket.get_status()
 	if socket_status in [StreamPeerTCP.STATUS_CONNECTED, StreamPeerTCP.STATUS_CONNECTING]:
 		return
@@ -78,6 +79,7 @@ func connect_to_server() -> void:
 			emit_signal("connection_status_changed", true, 'unknown error')
 			
 func login_do() -> bool:
+	print("[tcp_transf_class]->login_do.")
 	var stime = Time.get_ticks_msec()
 	var loop_cnt = 0
 	while loop_cnt <= 3:
@@ -99,10 +101,11 @@ func login_do() -> bool:
 		emit_signal("report_result", "tcp_transf_class", taskid, "login", 'FINISH')
 		return true
 	else:
-		print("login failed:%s"%[req_login_ack.get('message', 'unknown error')])
+		print("[tcp_transf_class]->login_do:login failed:%s"%[req_login_ack.get('message', 'unknown error')])
 		return false
 		
 func disconnect_to_server() -> void:
+	print("[tcp_transf_class]->disconnect_to_server.")
 	rec_data_running = false
 	download_running = false
 	rec_data_running = false
@@ -123,10 +126,11 @@ func disconnect_to_server() -> void:
 	
 #############################  upload ########################
 func upload_a_file(filepath:String) -> void:
+	print("[tcp_transf_class]->upload_a_file:%s"%[filepath])
 	connect_to_server()
 	var r = login_do()
 	if not r:
-		print('login failed!')
+		print('[tcp_transf_class]->upload_a_file:login failed!')
 		disconnect_to_server()
 		return
 	upload_file = filepath
@@ -135,10 +139,11 @@ func upload_a_file(filepath:String) -> void:
 	upload_thread.start(upload_a_file_thread.bind(filepath))
 	
 func upload_a_file_thread(filepath) -> void:
+	print("[tcp_transf_class]->upload_a_file_thread:%s"%[filepath])
 	var loop_cnt:int = 0
 	while upload_running and loop_cnt <= 3:
 		var stime = Time.get_ticks_msec()
-		print("will send req_upload, cnt=%s, socket_status:%s"%[loop_cnt, _socket.get_status()])
+		print("[tcp_transf_class]->upload_a_file_thread:will send req_upload, cnt=%s, socket_status:%s"%[loop_cnt, _socket.get_status()])
 		request_upload(filepath)
 		while req_upload_ack.size() == 0:
 			var ctime = Time.get_ticks_msec()
@@ -152,10 +157,12 @@ func upload_a_file_thread(filepath) -> void:
 		upload_running = true
 		upload_data(filepath, req_upload_ack.get('offset', 0))
 	else:
-		print('upload failed:%s'%[req_upload_ack.get('message', 'unknown error')])
+		print('[tcp_transf_class]->upload_a_file_thread:upload failed:%s'%[req_upload_ack.get('message', 'unknown error')])
 		disconnect_to_server()
+		emit_signal("report_result", 'tcp_transf_class', taskid, 'upload', 'FINISH')
 		
 func upload_data(filepath, offset) -> void:
+	print("[tcp_transf_class]->upload_data:%s  %s"%[filepath, offset])
 	var uploadfile = FileAccess.open(filepath, FileAccess.READ)
 	if uploadfile == null:
 		return
@@ -179,8 +186,11 @@ func upload_data(filepath, offset) -> void:
 
 ######################### download #########################
 func download_a_file(filepath:String, file_size:int, md5:String) -> void:
+	print("[tcp_transf_class]->download_a_file:%s"%[filepath])
 	if FileAccess.file_exists(filepath) and overwrite == 'no':
+		print("[tcp_transf_class]->download_a_file: file not exist!")
 		return
+	connect_to_server()
 	var r = login_do()
 	if not r:
 		print('login failed!')
@@ -198,23 +208,23 @@ func download_a_file(filepath:String, file_size:int, md5:String) -> void:
 		if overwrite == 'yes':
 			var err = DirAccess.remove_absolute(filepath)
 			if err != Error.OK:
-				print('remove file failed in download overwrite mode')
+				print('[tcp_transf_class]->download_a_file:remove file failed in download overwrite mode')
 				return
 		else:
 			var md5_check:String = FileAccess.get_md5(filepath)
 			if md5_check == md5:
-				print('already have this file')
+				print('[tcp_transf_class]->download_a_file:already have this file')
 				return
 			else:
 				var err = DirAccess.remove_absolute(filepath)
 				if err != Error.OK:
-					print('remove error md5 file failed in download')
+					print('[tcp_transf_class]->download_a_file:remove error md5 file failed in download')
 					return
 	if FileAccess.file_exists(dl_tmpfilepath):
 		if overwrite == 'yes':
 			var err = DirAccess.remove_absolute(dl_tmpfilepath)
 			if err != Error.OK:
-				print('remove tmp file failed in download overwrite mode')
+				print('[tcp_transf_class]->download_a_file:remove tmp file failed in download overwrite mode')
 				return
 		else:
 			offset = FileAccess.get_size(dl_tmpfilepath)
@@ -226,6 +236,7 @@ func download_a_file(filepath:String, file_size:int, md5:String) -> void:
 	write_thread.start(write_a_file_thread.bind(root_dir, filepath, file_size, md5, offset))
 
 func download_a_file_thread(filepath, file_size, md5, offset) -> void:
+	print("[tcp_transf_class]->download_a_file_thread:%s"%[filepath])
 	var stime = Time.get_ticks_msec()
 	var loop_cnt = 0
 	while download_running and loop_cnt <= 3:
@@ -268,20 +279,24 @@ func receiving_data_thread():
 func received_and_deal_data(header:String, data:PackedByteArray) -> void:
 	if header == '|SV>GD|RQ:':
 		var r:Dictionary = receive_parser_req_data(header + data.get_string_from_utf8())
-		print("|SV>GD|RQ: %s is :"%[len(header) + len(data)], r)
+		print("[tcp_transf_class]->received_and_deal_data:|SV>GD|RQ: %s is :"%[len(header) + len(data)], r)
 		var req_type = r.data.get('req_type', '')
 		if req_type == 'upload':
 			req_upload_ack = r.data
 			var status = req_upload_ack.get('status', '')
 			if status in ['ERROR3', 'ERROR4', 'ERROR5']:
 				if error_retry_cnt > 0:
-					print("!!!! receive error from server:%s, will retry %s" % [status, error_retry_cnt])
+					print("[tcp_transf_class]->received_and_deal_data:!!!! receive error from server:%s, will retry %s" % [status, error_retry_cnt])
 					error_retry_cnt += 1
 					disconnect_to_server()
 					connect_to_server()
 					upload_a_file(upload_file)
 				else:
 					disconnect_to_server()
+			elif status == 'FINISH':
+				print("[tcp_transf_class]->received_and_deal_data: upload FINISH")
+				emit_signal("report_result", "tcp_transf_class", taskid, 'upload', 'FINISH')
+				
 		elif req_type == 'download':
 			req_download_ack = r.data
 		elif req_type == 'login':
@@ -399,7 +414,7 @@ func write_a_file_thread(filedir, filepath, file_size, md5, offset):
 	if overwrite == 'yes' or md5 == md5_check:
 		DirAccess.rename_absolute(dl_tmpfilepath, filepath)
 		emit_signal("report_result", "tcp_transf_class", taskid, 'download', 'FINISH')
-		print('download finish!!')
+		print('[tcp_transf_class]->write_a_file_thread:download finish!!')
 	else:
 		need_retry = true
 	if need_retry:
@@ -410,6 +425,7 @@ func write_a_file_thread(filedir, filepath, file_size, md5, offset):
 	
 				
 func request_download(filepath, file_size, md5, offset):
+	print("[tcp_transf_class]->request_download:%s"%[filepath])
 	var data = {
 		'req_type': 'download',
 		'filepath': filepath.replace(root_dir + '\\', ''),
@@ -421,6 +437,7 @@ func request_download(filepath, file_size, md5, offset):
 
 	
 func request_upload(filepath) -> void:
+	print("[tcp_transf_class]->request_upload:%s"%[filepath])
 	if not FileAccess.file_exists(filepath):
 		print('file not exist!!!')
 		return
@@ -428,20 +445,20 @@ func request_upload(filepath) -> void:
 	var data = {
 		'req_type': 'upload',
 		'status': '-',
-		'filepath': filepath.replace(root_dir + '\\', ''),
+		'filepath': filepath.replace(root_dir + '/', ''),
 		'file_size': FileAccess.get_size(filepath),
 		'file_md5': FileAccess.get_md5(filepath),
 		'overwrite': overwrite}
 	request_a_message(data)
 
 func request_a_message(req_dic:Dictionary):
-	print("|GD>SV|RQ:%s is "%[_socket.get_status()], req_dic)
+	print("[tcp_transf_class]->request_a_message:|GD>SV|RQ:%s is "%[_socket.get_status()], req_dic)
 	if _socket.get_status() == StreamPeerTCP.STATUS_CONNECTED:
 		var json_string = JSON.stringify(req_dic)
 		var crcv = "%08X"%[crc32_class.fCRC32(json_string.to_utf8_buffer())]
 		_socket.put_data(("|GD>SV|RQ:" + "%04X"%[len(json_string) + 8] + json_string + crcv).to_utf8_buffer())
 	else:
-		print('disconnect, send message failed')
+		print('[tcp_transf_class]->request_a_message:disconnect, send message failed')
 	
 func _on_status_changed(is_connected:bool, msg:String):
-	print('[TCP Status] %s' % [msg])
+	print('[tcp_transf_class]->_on_status_changed:[TCP Status] %s' % [msg])
