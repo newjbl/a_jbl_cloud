@@ -96,7 +96,7 @@ func push_files_table() -> void:
 	push_obj.upload_a_file(push_file)
 
 func scan_files() -> void:
-	print("[connect_home]->push_files_table")
+	print("[connect_home]->scan_files")
 	var taskid:String = generate_task_id()
 	scan_files_obj = SCAN_C.new(taskid, UE_ROOT_DIR.path_join('files.txt'))
 	scan_files_obj.connect("scan_finished", _on_class_report_result)
@@ -130,7 +130,7 @@ func load_cfg():
 
 func generate_task_id() -> String:
 	var time = Time.get_ticks_msec()
-	var task_id = 'task' + str(time)
+	var task_id = 'task_' + str(time)
 	return task_id
 	
 func if_need_delete_ue_file(file_dic:Dictionary, day:int=7) -> bool:
@@ -141,7 +141,7 @@ func if_need_delete_ue_file(file_dic:Dictionary, day:int=7) -> bool:
 	return false
 
 func update_state() -> void:
-	var next_state = states.get(current_state, {}).get('next_satate', '')
+	var next_state = states.get(current_state, {}).get('next_state', '')
 	if next_state != '':
 		print("[connect_home]->update_state:%s>%s"%[current_state, next_state])
 		current_state = next_state
