@@ -150,6 +150,8 @@ def handle_ue_upload_req(upload_socket:socket.socket, client_addr:tuple, upload_
         req_type = meta_json.get("req_type", "")
         if req_type == 'upload':
             handle_ue_upload_details(upload_socket, client_addr, meta_json, upload_text)
+        elif req_type == 'query':
+            handle_query(upload_socket, client_addr, meta_json)
         elif req_type == 'login':
             handle_login(upload_socket, client_addr, meta_json)
         else:
@@ -157,6 +159,25 @@ def handle_ue_upload_req(upload_socket:socket.socket, client_addr:tuple, upload_
     except Exception as e:
         import traceback
         print(traceback.format_exc())
+
+def handle_query(upload_socket:socket.socket, client_addr:tuple, meta_json):
+    req_type = meta_json.get("req_type", "")
+    filedic = meta_json.get("filedic", "")
+    if not (req_type and filedic):
+        print("[%s]ue(%s) query data missing"%(datetime.now(), client_addr))
+        return False
+    rt = []
+    file_dic = json.loads(filedic)
+    for filepath, md5 in file_dic.items():
+        usr_dir = LOGIN_DIC[client_addr]['usr_dir']
+        fin_file_path = os.path.join(usr_dir, filepath)
+        md5_check = caculate_md5(fin_file_path)
+        if md5_check != md5:
+            rt.append(filepath)
+    if rt == []:
+        rt = ['all ok']
+    send_stander_ack(upload_socket, "|SV>GD|RQ:", 'query', "OK", ";".join(rt), 0)
+    return True
 
 def handle_ue_upload_details(upload_socket:socket.socket, client_addr:tuple, meta_json, upload_text):
     req_type = meta_json.get("req_type", "")
@@ -353,7 +374,7 @@ def handle_ue_download_details(download_socket:socket.socket, client_addr:tuple,
     return True
 
 def handle_ue_download_do(download_socket:socket.socket, fin_file_path, meta_json, download_text):
-    print("[%s]start handle ue download"%(datetime.now()))
+    print("[%s]start handle ue download:%s"%(datetime.now(), fin_file_path))
     file_size = os.path.getsize(fin_file_path)
     offset = meta_json.get("offset", 0)
     idx = 0
@@ -376,6 +397,7 @@ def start_godot_upload_server():
     print("[%s]ue upload server listen  %s:%s"%(datetime.now(), SERVER_HOST, UE_UPLOAD_PORT))
     while True:
         client_socket, addr = godot_socket.accept()
+        print('======================================== new request =========================================')
         threading.Thread(target=handle_ue_upload, args=(client_socket, addr), daemon=True).start()
 
 
@@ -387,6 +409,7 @@ def start_godot_download_server():
     print("[%s]ue download server listen  %s:%s" % (datetime.now(), SERVER_HOST, UE_DOWNLOAD_PORT))
     while True:
         client_socket, addr = godot_socket.accept()
+        print('======================================== new request =========================================')
         threading.Thread(target=handle_ue_download, args=(client_socket, addr), daemon=True).start()
 
 if __name__ == "__main__":

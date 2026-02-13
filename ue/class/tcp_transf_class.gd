@@ -18,8 +18,6 @@ var write_running:bool = false
 var req_upload_ack:Dictionary = {}
 var req_download_ack:Dictionary = {}
 var req_login_ack:Dictionary = {}
-var req_pull_ack:Dictionary = {}
-var req_push_ack:Dictionary = {}
 
 var tmp_format:String = '.dtmp'
 var dl_tmpfilepath:String = ''
@@ -33,8 +31,7 @@ var psd:String = ''
 var overwrite = 'no'
 var taskid:String = ''
 
-signal connection_status_changed(is_connected:bool, message:String)
-signal report_result(who_i_am:String, taskid:String, req_type:String, result:String)
+signal report_result(who_i_am:String, taskid:String, req_type:String, infor:String, result:String)
 
 var root_dir:String = ''
 var upload_file:String = r''
@@ -51,7 +48,6 @@ func _init(_taskid, rootdir, sip, sport, _usr, _psd, ercnt=3, ow='no') -> void:
 	psd = _psd
 	overwrite = ow
 	error_retry_cnt = ercnt
-	connection_status_changed.connect(_on_status_changed)
 
 ############################## connection ###################
 func connect_to_server() -> void:
@@ -67,17 +63,30 @@ func connect_to_server() -> void:
 	dl_buffer = []
 	rec_data_running = true
 	
-	emit_signal("connection_status_changed", true, 'connecting... ...')
 	var error = _socket.connect_to_host(serverip, serverport)
 	match error:
 		OK:
 			_socket.poll()
-			emit_signal("connection_status_changed", true, 'success connected to %s:%s'%[serverip, serverport])
 			rec_data_thread = Thread.new()
 			rec_data_thread.start(receiving_data_thread)
 		_:
-			emit_signal("connection_status_changed", true, 'unknown error')
-			
+			print('[tcp_transf_class]->connect_to_server:connect error:%s'%[error])
+
+func query_files(filedic:Dictionary) -> void:
+	print('[tcp_transf_class]->query_files:%s'%[';'.join(filedic.keys())])
+	connect_to_server()
+	var r = login_do()
+	if not r:
+		print('[tcp_transf_class]->upload_a_file:login failed!')
+		disconnect_to_server()
+		return
+	var filestr:String = JSON.stringify(filedic)
+	request_a_message({
+		'req_type': 'query',
+		'status': '-',
+		'filedic': filestr,
+	})
+	
 func login_do() -> bool:
 	print("[tcp_transf_class]->login_do.")
 	var stime = Time.get_ticks_msec()
@@ -98,7 +107,7 @@ func login_do() -> bool:
 			break
 	var rt_status =  req_login_ack.get('status', '')
 	if rt_status == 'OK':
-		emit_signal("report_result", "tcp_transf_class", taskid, "login", 'FINISH')
+		emit_signal("report_result", "tcp_transf_class", taskid, "login", '', 'FINISH')
 		return true
 	else:
 		print("[tcp_transf_class]->login_do:login failed:%s"%[req_login_ack.get('message', 'unknown error')])
@@ -117,12 +126,8 @@ func disconnect_to_server() -> void:
 	dl_buffer = []
 	var socket_status = _socket.get_status()
 	if socket_status != StreamPeerTCP.STATUS_CONNECTED:
-		emit_signal("connection_status_changed", true, 'not connected')
 		return
 	_socket.disconnect_from_host()
-	emit_signal("connection_status_changed", true, 'success disconnected to %s:%s'%[serverip, serverport])
-	
-	
 	
 #############################  upload ########################
 func upload_a_file(filepath:String) -> void:
@@ -156,10 +161,14 @@ func upload_a_file_thread(filepath) -> void:
 	if rt_status == 'OK':
 		upload_running = true
 		upload_data(filepath, req_upload_ack.get('offset', 0))
+	elif rt_status == 'ERROR2':
+		print('[tcp_transf_class]->upload_a_file_thread: upload failed but already exist')
+		disconnect_to_server()
+		emit_signal("report_result", 'tcp_transf_class', taskid, 'upload', upload_file, 'FINISH')
 	else:
 		print('[tcp_transf_class]->upload_a_file_thread:upload failed:%s'%[req_upload_ack.get('message', 'unknown error')])
 		disconnect_to_server()
-		emit_signal("report_result", 'tcp_transf_class', taskid, 'upload', 'FINISH')
+		emit_signal("report_result", 'tcp_transf_class', taskid, 'upload', upload_file, 'FAILED')
 		
 func upload_data(filepath, offset) -> void:
 	print("[tcp_transf_class]->upload_data:%s  %s"%[filepath, offset])
@@ -180,9 +189,9 @@ func upload_data(filepath, offset) -> void:
 		offset += block.size()
 		idx += 1
 	if upload_running == false and req_upload_ack.get('status', '') == 'FINISH':
+		print('[tcp_transf_class]->upload_data: finish: %s'%[filepath])
 		emit_signal("report_result", "tcp_transf_class", taskid, 'upload', 'FINISH')
 		request_a_message({'req_type':'upload', 'status':'FINISH'})
-
 
 ######################### download #########################
 func download_a_file(filepath:String, file_size:int, md5:String) -> void:
@@ -199,7 +208,7 @@ func download_a_file(filepath:String, file_size:int, md5:String) -> void:
 	download_file = filepath
 	var dl_dir = DirAccess.open(root_dir)
 	if not dl_dir:
-		DirAccess.make_dir_absolute(dl_dir)
+		DirAccess.make_dir_absolute(root_dir)
 	var filename:String = filepath.get_file()
 	var filedir:String = filepath.get_base_dir()
 	dl_tmpfilepath = filedir.path_join("%s_%s_%s"%[md5, filename, tmp_format])
@@ -233,7 +242,7 @@ func download_a_file(filepath:String, file_size:int, md5:String) -> void:
 	download_thread = Thread.new()
 	download_thread.start(download_a_file_thread.bind(filepath,file_size, md5, offset))
 	write_thread = Thread.new()
-	write_thread.start(write_a_file_thread.bind(root_dir, filepath, file_size, md5, offset))
+	write_thread.start(write_a_file_thread.bind(filepath, file_size, md5, offset))
 
 func download_a_file_thread(filepath, file_size, md5, offset) -> void:
 	print("[tcp_transf_class]->download_a_file_thread:%s"%[filepath])
@@ -255,7 +264,7 @@ func download_a_file_thread(filepath, file_size, md5, offset) -> void:
 			{'req_type': 'download',
 			'status': 'OK', 
 			'file_size' :file_size,
-			'filepath': filepath.replace(root_dir + '\\', ''),
+			'filepath': filepath.replace(root_dir + '/', ''),
 			'file_md5': md5,
 			'offset': offset,
 			})
@@ -275,6 +284,10 @@ func receiving_data_thread():
 					if data[1].size() > 0:
 						var hd:Array = received_get_header(data[1])
 						received_and_deal_data(hd[0], hd[1])
+					else:
+						print('[tcp_transf_class]->receiving_data_thread:data[1].size() <= 0')
+				else:
+					print('[tcp_transf_class]->receiving_data_thread:get data error')
 						
 func received_and_deal_data(header:String, data:PackedByteArray) -> void:
 	if header == '|SV>GD|RQ:':
@@ -292,19 +305,21 @@ func received_and_deal_data(header:String, data:PackedByteArray) -> void:
 					connect_to_server()
 					upload_a_file(upload_file)
 				else:
+					print('[tcp_transf_class]->received_and_deal_data:!!!! receive error from server'%[status, error_retry_cnt])
 					disconnect_to_server()
 			elif status == 'FINISH':
 				print("[tcp_transf_class]->received_and_deal_data: upload FINISH")
-				emit_signal("report_result", "tcp_transf_class", taskid, 'upload', 'FINISH')
+				emit_signal("report_result", "tcp_transf_class", taskid, 'upload', upload_file, 'FINISH')
 				
 		elif req_type == 'download':
 			req_download_ack = r.data
 		elif req_type == 'login':
 			req_login_ack = r.data
-		elif req_type == 'pull':
-			req_pull_ack = r.data
-		elif req_type == 'push':
-			req_push_ack = r.data
+		elif req_type == 'query':
+			if r.data.status != 'OK':
+				emit_signal("report_result", "tcp_transf_class", taskid, 'query', '', 'FAILED')
+			else:
+				emit_signal("report_result", "tcp_transf_class", taskid, 'query', '', r.data.message)
 	elif header == '|SV>GD|DO:':
 		dl_buffer.append(data)
 		
@@ -374,10 +389,10 @@ func write_a_data_block(f:FileAccess, data_block:PackedByteArray, preidx:int) ->
 		print(crc_int)
 	if f:
 		f.seek_end()
-	var r = f.store_buffer(data_payload)
+	var _r = f.store_buffer(data_payload)
 	return {'s':data_payload.size(), 'd':-1, 'idx':idxint}
 
-func write_a_file_thread(filedir, filepath, file_size, md5, offset):
+func write_a_file_thread(filepath, file_size, md5, offset):
 	while not download_running:
 		pass
 	var f = FileAccess.open(dl_tmpfilepath, FileAccess.READ_WRITE)
@@ -413,7 +428,7 @@ func write_a_file_thread(filedir, filepath, file_size, md5, offset):
 	var md5_check = FileAccess.get_md5(dl_tmpfilepath)
 	if overwrite == 'yes' or md5 == md5_check:
 		DirAccess.rename_absolute(dl_tmpfilepath, filepath)
-		emit_signal("report_result", "tcp_transf_class", taskid, 'download', 'FINISH')
+		emit_signal("report_result", "tcp_transf_class", taskid, 'download', download_file, 'FINISH')
 		print('[tcp_transf_class]->write_a_file_thread:download finish!!')
 	else:
 		need_retry = true
@@ -428,7 +443,7 @@ func request_download(filepath, file_size, md5, offset):
 	print("[tcp_transf_class]->request_download:%s"%[filepath])
 	var data = {
 		'req_type': 'download',
-		'filepath': filepath.replace(root_dir + '\\', ''),
+		'filepath': filepath.replace(root_dir + '/', ''),
 		'file_size': file_size,
 		'file_md5': md5,
 		'offset': offset,

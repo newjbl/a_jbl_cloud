@@ -2,6 +2,7 @@ extends Node
 class_name SCAN_C
 
 var db_path:String = "res://db/files.txt"
+var icon_dir:String = "res://db/icon/"
 var ignore_file_list:Array = ['files.txt']
 var ignore_ext_list:Array = ['dtmp']
 var scan_thread:Thread = null
@@ -9,9 +10,9 @@ var scan_thread_running:bool = false
 var taskid:String = ''
 var new_files_dic:Dictionary = {}
 
-signal scan_finished(who_i_am:String, taskid:String, req_type:String, result:String)
+signal scan_finished(who_i_am:String, taskid:String, req_type:String, infor:String, result:String)
 
-func _init(_taskid, db) -> void:
+func _init(_taskid:String, db:String) -> void:
 	taskid = _taskid
 	db_path = db
 	scan_finished.connect(_on_scan_status_changed)
@@ -27,7 +28,7 @@ func scan_a_dir_thread(scan_root_dir:String) -> void:
 	get_all_files(scan_root_dir)
 	scan_thread_running = false
 	merger_table()
-	emit_signal("scan_finished", 'scan_class', taskid, 'scan', 'FINISH')
+	emit_signal("scan_finished", 'scan_class', taskid, 'scan', '', 'FINISH')
 	
 func merger_table() -> void:
 	var db_dic:Dictionary = read_db()
@@ -36,7 +37,7 @@ func merger_table() -> void:
 	var rmv_files_list:Array = []
 	for eachfile in server_files_dic:
 		##remove
-		if eachfile not in new_files_dic:
+		if eachfile not in new_files_dic and server_files_dic[eachfile].get('on_server', '') == 'no':
 			rmv_files_list.append(eachfile)
 	for eachfile in rmv_files_list:
 		print('[scan_class]->merger_table:remove %s'%[eachfile])
@@ -48,6 +49,8 @@ func merger_table() -> void:
 		if eachfile not in server_files_dic:
 			print("[scan_class]->merger_table:add %s"%[eachfile])
 			server_files_dic[eachfile] = ndic
+			### create icon
+			print('[scan_class]->merger_table:create icon finish:%s'%[eachfile])
 		##mod
 		else:
 			var server_md5 = sdic['md5']
@@ -82,13 +85,12 @@ func get_all_files(scaned_path:String) -> void:
 				current_name = dir.get_next()
 				continue
 			var md5:String = FileAccess.get_md5(current_path)
-			#var a = FileAccess.get_modified_time(current_path)
-			var modtime = Time.get_datetime_dict_from_unix_time(FileAccess.get_modified_time(current_path))
+			var modtime = FileAccess.get_modified_time(current_path)
 			var filesize = FileAccess.get_size(current_path)
-			var fileloc = "01"
 			if current_path not in new_files_dic:
 				new_files_dic[current_path] = {'md5': md5, 'filename': current_name,
-				'filesize': filesize, 'modtime': modtime, 'filetype': filetype, 'fileloc': fileloc}
+				'filesize': filesize, 'modtime': modtime, 'filetype': filetype, 'on_server': 'no', 
+				'on_ue': 'yes', 'res1':'', 'res2':'', 'res3':''}
 		current_name = dir.get_next()
 	dir.list_dir_end()
 	
@@ -105,7 +107,7 @@ func _init_db() -> bool:
 	
 func write_db(indic:Dictionary) -> bool:
 	var jsoner:JSON = JSON.new()
-	var instr:String = jsoner.stringify(indic, '\n')
+	var instr:String = jsoner.stringify(indic, '\t')
 	var f = FileAccess.open(db_path, FileAccess.WRITE)
 	if f:
 		var r = f.store_string(instr)
@@ -123,8 +125,8 @@ func read_db() -> Dictionary:
 			return jsoner.data
 	return {}
 
-func _on_scan_status_changed(who_i_am:String, taskid:String, req_type:String, result:String) -> void:
-	print("%s-%s %s %s" % [who_i_am, taskid, req_type, result])
+func _on_scan_status_changed(who_i_am:String, taskid:String, req_type:String, infor:String, result:String) -> void:
+	print("%s-%s %s %s" % [who_i_am, taskid, req_type, infor, result])
 	
 			
 	
