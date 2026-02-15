@@ -98,7 +98,7 @@ func _init_db() -> bool:
 	if not FileAccess.file_exists(db_path):
 		var f = FileAccess.open(db_path, FileAccess.WRITE)
 		if f:
-			var rt = f.store_string('{}')
+			var _rt = f.store_string('{}')
 			f.close()
 			return true
 		else:
@@ -106,8 +106,7 @@ func _init_db() -> bool:
 	return true
 	
 func write_db(indic:Dictionary) -> bool:
-	var jsoner:JSON = JSON.new()
-	var instr:String = jsoner.stringify(indic, '\t')
+	var instr:String = JSON.stringify(indic, '\t')
 	var f = FileAccess.open(db_path, FileAccess.WRITE)
 	if f:
 		var r = f.store_string(instr)
@@ -126,7 +125,7 @@ func read_db() -> Dictionary:
 	return {}
 
 func _on_scan_status_changed(who_i_am:String, taskid:String, req_type:String, infor:String, result:String) -> void:
-	print("%s-%s %s %s" % [who_i_am, taskid, req_type, infor, result])
+	print("%s-%s %s %s %s" % [who_i_am, taskid, req_type, infor, result])
 	
 			
 	

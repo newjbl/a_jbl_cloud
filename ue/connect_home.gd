@@ -68,6 +68,9 @@ func _ready() -> void:
 	for_test()
 
 func for_test() -> void:
+	#current_state = 'query_files'
+	#query_files()
+	
 	current_state = 'push_files_table'
 	update_state()
 
@@ -151,17 +154,18 @@ func build_gui() -> void:
 	vbox_l1_1_login.add_child(hbox_login_l7)
 	vbox_l1_1_login.add_child(hbox_login_le)
 	
-	var login_title_label:Label = Label.new()
-	login_title_label.name = 'login_title_label'
-	login_title_label.text = '登录信息'
-	hbox_login_l1.add_child(login_title_label)
+	var login_tiltle_label:Label = Label.new()
+	login_tiltle_label.name = 'login_tiltle_label'
+	login_tiltle_label.text = '登陆信息'
+	hbox_login_l1.add_child(login_tiltle_label)
 	
 	var server_ip_label:Label = Label.new()
 	server_ip_label.name = 'server_ip_label'
 	server_ip_label.text = '服务器IP:'
 	hbox_login_l2.add_child(server_ip_label)
 	var server_ip_input:LineEdit = LineEdit.new()
-	server_ip_input.name = 'server_ip_label'
+	server_ip_input.name = 'server_ip_input'
+	server_ip_input.text = SERVER_IP
 	server_ip_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hbox_login_l2.add_child(server_ip_input)
 	
@@ -171,6 +175,7 @@ func build_gui() -> void:
 	hbox_login_l3.add_child(upload_port_label)
 	var upload_port_input:LineEdit = LineEdit.new()
 	upload_port_input.name = 'upload_port_input'
+	upload_port_input.text = "%s"%UPLOAD_PORT
 	upload_port_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hbox_login_l3.add_child(upload_port_input)
 	
@@ -180,6 +185,7 @@ func build_gui() -> void:
 	hbox_login_l4.add_child(download_port_label)
 	var download_port_input:LineEdit = LineEdit.new()
 	download_port_input.name = 'download_port_input'
+	download_port_input.text = "%s"%DOWNLOAD_PORT
 	download_port_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hbox_login_l4.add_child(download_port_input)
 	
@@ -189,6 +195,7 @@ func build_gui() -> void:
 	hbox_login_l5.add_child(usr_label)
 	var usr_input:LineEdit = LineEdit.new()
 	usr_input.name = 'usr_input'
+	usr_input.text = USR
 	usr_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hbox_login_l5.add_child(usr_input)
 	
@@ -198,21 +205,22 @@ func build_gui() -> void:
 	hbox_login_l6.add_child(psd_label)
 	var psd_input:LineEdit = LineEdit.new()
 	psd_input.name = 'psd_input'
+	psd_input.text = PSD
 	psd_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hbox_login_l6.add_child(psd_input)
 	
 	var save_cfg_bt:Button = Button.new()
-	save_cfg_bt.name = 'save_cfg_label'
-	save_cfg_bt.text = '保存配置'
+	save_cfg_bt.name = 'save_cfg_bt'
+	save_cfg_bt.text = '保存信息'
 	save_cfg_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	save_cfg_bt.connect("pressed", _on_save_cfg_bt_pressed.bind(login_title_label, save_cfg_bt,
+	save_cfg_bt.connect("pressed", _on_save_cfg_bt_pressed.bind(login_tiltle_label, save_cfg_bt,
 	server_ip_input, upload_port_input, download_port_input, usr_input, psd_input))
 	hbox_login_l7.add_child(save_cfg_bt)
 	var test_bt:Button = Button.new()
 	test_bt.name = 'test_bt'
 	test_bt.text = '测试连接'
 	test_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	test_bt.connect("pressed", _on_test_bt_pressed.bind(login_title_label, test_bt,
+	test_bt.connect("pressed", _on_test_bt_pressed.bind(login_tiltle_label, test_bt,
 	server_ip_input, upload_port_input, download_port_input, usr_input, psd_input))
 	hbox_login_l7.add_child(test_bt)
 	
@@ -260,6 +268,7 @@ func build_gui() -> void:
 	var dis_size_label:Label = Label.new()
 	dis_size_label.name = 'dis_size_label'
 	dis_size_label.text = '显示粒度:'
+	dis_size_label.label_settings = label_setting_font_10
 	hbox_setting_l2.add_child(dis_size_label)
 	var radio_group:ButtonGroup = ButtonGroup.new()
 	var radio_day:CheckBox = CheckBox.new()
@@ -289,7 +298,7 @@ func build_gui() -> void:
 	var hbox_time_l2:HBoxContainer = HBoxContainer.new()
 	var duration_label:Label = Label.new()
 	duration_label.name = 'duration_label'
-	duration_label.text = '时间范围'
+	duration_label.text = '时间范围:'
 	duration_label.label_settings = label_setting_font_10
 	hbox_setting_l3.add_child(duration_label)
 	var y1:OptionButton = OptionButton.new()
@@ -319,7 +328,7 @@ func build_gui() -> void:
 	var sort_p2:VBoxContainer = VBoxContainer.new()
 	var sort_p3:VBoxContainer = VBoxContainer.new()
 	sort_method_label.name = 'sort_method_label'
-	sort_method_label.text = '排序方式'
+	sort_method_label.text = '排序方式:'
 	sort_method_label.label_settings = label_setting_font_10
 	hbox_setting_l4.add_child(sort_method_label)
 	var radio_group_1:ButtonGroup = ButtonGroup.new()
@@ -363,19 +372,20 @@ func build_gui() -> void:
 	hbox_setting_l4.add_child(sort_p2)
 	hbox_setting_l4.add_child(sort_p3)
 	
-	var ue_save_duration:Label = Label.new()
-	ue_save_duration.name = 'ue_save_duration'
-	ue_save_duration.text = '手机存储天数:'
-	ue_save_duration.add_theme_font_size_override('font_size', 10)
-	hbox_setting_l5.add_child(ue_save_duration)
-	var ue_save_input:LineEdit = LineEdit.new()
-	ue_save_input.name = 'usr_input'
-	ue_save_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hbox_setting_l5.add_child(ue_save_input)
+	var ue_save_duration_label:Label = Label.new()
+	ue_save_duration_label.name = 'ue_save_duration_label'
+	ue_save_duration_label.text = '手机存储天数:'
+	ue_save_duration_label.label_settings = label_setting_font_10
+	hbox_setting_l5.add_child(ue_save_duration_label)
+	var ue_save_duration_input:LineEdit = LineEdit.new()
+	ue_save_duration_input.name = 'ue_save_duration_input'
+	ue_save_duration_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hbox_setting_l5.add_child(ue_save_duration_input)
 	
 	var iabout:Button = Button.new()
 	iabout.name = 'iabout'
 	iabout.text = '关于'
+	iabout.add_theme_font_size_override('font_size', 10)
 	iabout.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hbox_setting_l6.add_child(iabout)
 	
@@ -415,7 +425,7 @@ func build_gui() -> void:
 	scroll_container.add_child(vbox_l3_vbox)
 	scroll_container.custom_minimum_size.y = win_size.y - 20 - hbox_l1.size.y - hbox_l2.size.y
 	
-func add_one_block(idx:int, timek:String, block_dic:Dictionary) -> void:
+func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 	print('[connect_home]->add_one_block')
 	var s:int = (win_size.x - 10) / 3
 	var vbox_block:VBoxContainer = VBoxContainer.new()
@@ -438,6 +448,7 @@ func add_one_block(idx:int, timek:String, block_dic:Dictionary) -> void:
 		texture_rec.name = "texture_rec"
 		var texture_label:Label = Label.new()
 		texture_label.name = 'texture_label'
+		texture_label.label_settings = label_setting_font_10
 		var show_name_list:Array = wrap_txt("%s   %.1fMb"%[filename, filesize], 20)
 		if len(show_name_list) > 3:
 			texture_label.text = "%s\n%s\n%s"%[show_name_list[0], '... ...', show_name_list[2]]
@@ -485,6 +496,7 @@ func sort_files_by_method_duration(f_table:Dictionary) -> Dictionary:
 				key = _ts_to_month_str(ts)
 			_:
 				print('[connect_home]->sort_files_by_method_duration: DIS_SIZE Error')
+				return {}
 		if not result.has(key):
 			result[key] = []
 		result[key].append(info)
@@ -547,8 +559,8 @@ func _on_setting_bt_pressed() -> void:
 	print('[connect_home]->_on_setting_bt_pressed')
 	vbox_l1_2_setting.visible = not vbox_l1_2_setting.visible
 
-func _on_save_cfg_bt_pressed(login_title_label:Label, save_cfg_bt:Button, server_ip_input:LineEdit, 
-upload_port_input:LineEdit, download_port_input:LineEdit, usr_input:LineEdit, psd_input:LineEdit):
+func _on_save_cfg_bt_pressed(login_tiltle_label:Label, save_cfg_bt:Button, server_ip_input:LineEdit, 
+upload_port_input:LineEdit, download_port_input:LineEdit, usr_input:LineEdit, psd_input:LineEdit) -> void:
 	print('[connect_home]->_on_save_cfg_bt_pressed')
 	save_cfg_bt.text = '保存中... ...'
 	SERVER_IP = server_ip_input.text
@@ -586,7 +598,7 @@ upload_port_input:LineEdit, download_port_input:LineEdit, usr_input:LineEdit, ps
 func query_files() -> void:
 	print("[connect_home]->query_files")
 	var taskid:String = generate_task_id()
-	query_obj = TCP_TRANSF_C.new(taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'yes')
+	query_obj = TCP_TRANSF_C.new(taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
 	query_obj.connect("report_result", _on_class_report_result)
 	var filedic:Dictionary = {}
 	for eachf in delete_dic:
@@ -607,7 +619,7 @@ func deal_files() -> void:
 			upload_dic[eachpath] = 'not upload yet'
 		elif on_ue == 'yes' and on_server == 'yes':#need check if need delete on UE
 			if if_need_delete_ue_file(all_files_dic[eachpath], 7):
-				delete_dic[eachpath] == 'not delete yet'
+				delete_dic[eachpath] = 'not delete yet'
 	_on_class_report_result('connect_home', '', 'deal_files', '', 'FINISH')
 	
 func upload_files() -> void:
@@ -743,13 +755,15 @@ func update_state() -> void:
 			next_func.call()
 
 func _on_class_report_result(who_i_am:String, taskid:String, req_type:String, infor:String, result:String) -> void:
-	print("[connect_home]->_on_class_report_result:%s-%s %s %s %s"%[who_i_am, taskid, req_type, result])
+	print("[connect_home]->_on_class_report_result:%s-%s %s %s %s"%[who_i_am, taskid, req_type, infor, result])
 	if who_i_am == 'tcp_transf_class':
 		if current_state == 'pull_files_table':## pull finish
 			if req_type == 'download' and taskid == pull_obj.taskid:# and result == 'FINISH':
 				update_state()
 		elif current_state == 'upload_files':## upload one file finish
 			if req_type == 'upload' and taskid == upload_obj.taskid:# and result == 'FINISH':
+				if result == 'FINISH':
+					upload_dic[infor] = 'uploaded'
 				upload_finish = true
 		elif current_state == 'query_files':# query finish
 			if req_type == 'query' and taskid == query_obj.taskid:

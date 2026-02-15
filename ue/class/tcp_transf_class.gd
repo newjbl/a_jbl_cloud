@@ -77,7 +77,7 @@ func query_files(filedic:Dictionary) -> void:
 	connect_to_server()
 	var r = login_do()
 	if not r:
-		print('[tcp_transf_class]->upload_a_file:login failed!')
+		print('[tcp_transf_class]->query_files:login failed!')
 		disconnect_to_server()
 		return
 	var filestr:String = JSON.stringify(filedic)
