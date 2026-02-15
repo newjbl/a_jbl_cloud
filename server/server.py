@@ -165,7 +165,7 @@ def handle_query(upload_socket:socket.socket, client_addr:tuple, meta_json:dict)
     filedic = meta_json.get("filedic", "")
     if not (req_type and filedic):
         print("[%s]ue(%s) query data missing"%(datetime.now(), client_addr))
-        send_stander_ack(upload_socket, "|SV>GD:RQ:", 'upload', 'ERROR1', ERROR_CODE_DIC['ERROR1'], 0)
+        send_stander_ack(upload_socket, "|SV>GD|RQ:", "upload", "ERROR1", ERROR_CODE_DIC["ERROR1"], 0)
         return False
     rt = []
     file_dic = json.loads(filedic)

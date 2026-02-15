@@ -124,8 +124,8 @@ func read_db() -> Dictionary:
 			return jsoner.data
 	return {}
 
-func _on_scan_status_changed(who_i_am:String, taskid:String, req_type:String, infor:String, result:String) -> void:
-	print("%s-%s %s %s %s" % [who_i_am, taskid, req_type, infor, result])
+func _on_scan_status_changed(who_i_am:String, _taskid:String, req_type:String, infor:String, result:String) -> void:
+	print("%s-%s %s %s %s" % [who_i_am, _taskid, req_type, infor, result])
 	
 			
 	

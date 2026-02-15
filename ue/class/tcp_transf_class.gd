@@ -456,7 +456,6 @@ func request_upload(filepath) -> void:
 	if not FileAccess.file_exists(filepath):
 		print('file not exist!!!')
 		return
-	var filename = filepath.get_file()
 	var data = {
 		'req_type': 'upload',
 		'status': '-',
@@ -474,6 +473,3 @@ func request_a_message(req_dic:Dictionary):
 		_socket.put_data(("|GD>SV|RQ:" + "%04X"%[len(json_string) + 8] + json_string + crcv).to_utf8_buffer())
 	else:
 		print('[tcp_transf_class]->request_a_message:disconnect, send message failed')
-	
-func _on_status_changed(is_connected:bool, msg:String):
-	print('[tcp_transf_class]->_on_status_changed:[TCP Status] %s' % [msg])
