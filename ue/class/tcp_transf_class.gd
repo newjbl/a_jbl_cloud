@@ -66,12 +66,16 @@ func connect_to_server() -> void:
 	var error = _socket.connect_to_host(serverip, serverport)
 	match error:
 		OK:
-			_socket.poll()
+			var stime:int = Time.get_ticks_msec()
+			while _socket.get_status() == StreamPeerTCP.STATUS_CONNECTING:
+				_socket.poll()
+				if Time.get_ticks_msec() - stime > 10 * 1000:
+					break
 			rec_data_thread = Thread.new()
 			rec_data_thread.start(receiving_data_thread)
 		_:
 			print('[tcp_transf_class]->connect_to_server:connect error:%s'%[error])
-
+	print("[tcp_transf_class]->connect_to_server:%s"%_socket.get_status())
 func query_files(filedic:Dictionary) -> void:
 	print('[tcp_transf_class]->query_files:%s'%[';'.join(filedic.keys())])
 	connect_to_server()
@@ -473,3 +477,5 @@ func request_a_message(req_dic:Dictionary):
 		_socket.put_data(("|GD>SV|RQ:" + "%04X"%[len(json_string) + 8] + json_string + crcv).to_utf8_buffer())
 	else:
 		print('[tcp_transf_class]->request_a_message:disconnect, send message failed')
+		
+		

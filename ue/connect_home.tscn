@@ -4,11 +4,3 @@
 
 [node name="connect_home" type="Node2D" unique_id=1961771229]
 script = ExtResource("1_iwraj")
-
-[node name="OptionButton" type="OptionButton" parent="." unique_id=251116668]
-offset_right = 32.0
-offset_bottom = 20.0
-
-[node name="CheckBox" type="CheckBox" parent="." unique_id=1473838767]
-offset_right = 24.0
-offset_bottom = 24.0

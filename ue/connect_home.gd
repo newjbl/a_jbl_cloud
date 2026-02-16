@@ -15,9 +15,11 @@ var DIS_DURATION:Array = [0, 4290604800]
 var SORT_METHOD:String = 'NAME_AZ'# NAME_ZA, TIME_AZ, TIME_ZA, SIZE_AZ, SIZE_ZA
 var UE_SAVE_TIME:int = 30
 var DIS_FILE_TYPE:Array = ['zip']
-var label_setting_font_10:LabelSettings = null
+var DEFAULT_FONT_SIZE:int = 30
+var label_setting_font_30:LabelSettings = null
 var label_setting_font_red:LabelSettings = null
 var label_setting_font_blue:LabelSettings = null
+
 
 var win_size:Vector2i = Vector2i.ZERO
 var hbox_l1:HBoxContainer = null
@@ -56,8 +58,8 @@ var query_rt:String = ''
 var upload_finish:bool = false
 
 func _ready() -> void:
-	label_setting_font_10 = LabelSettings.new()
-	label_setting_font_10.font_size = 10
+	label_setting_font_30 = LabelSettings.new()
+	label_setting_font_30.font_size = 30
 	label_setting_font_red = LabelSettings.new()
 	label_setting_font_red.font_color = Color(1.0, 0.0, 0.0, 1.0)
 	label_setting_font_blue = LabelSettings.new()
@@ -87,6 +89,17 @@ func build_gui() -> void:
 	vbox_top.name = 'TOP'
 	vbox_top.size = win_size
 	
+	var hbox_l0 = HBoxContainer.new()
+	hbox_l0.name = 'title'
+	var title_label:Label = Label.new()
+	title_label.text = '文件回家 V0.1'
+	title_label.size = Vector2i(win_size.x, 50)
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_label.label_settings = label_setting_font_30
+	hbox_l0.add_child(title_label)
+	
+	
 	hbox_l1 = HBoxContainer.new()
 	hbox_l1.size = Vector2i(win_size.x - 5, 40)
 	hbox_l1.name = 'L1'
@@ -110,6 +123,7 @@ func build_gui() -> void:
 	vbox_l3.name = 'L3'
 	
 	add_child(vbox_top)
+	vbox_top.add_child(hbox_l0)
 	vbox_top.add_child(hbox_l1)
 	vbox_top.add_child(vbox_l1_1_login)
 	vbox_top.add_child(vbox_l1_2_setting)
@@ -120,6 +134,7 @@ func build_gui() -> void:
 	var login_bt:Button = Button.new()
 	login_bt.text = '登录'
 	login_bt.name = 'login_bt'
+	login_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	login_bt.connect("pressed", _on_login_bt_pressed)
 	hbox_l1.add_child(login_bt)
 	var sp:Control = Control.new()
@@ -129,6 +144,7 @@ func build_gui() -> void:
 	var setting_bt:Button = Button.new()
 	setting_bt.text = '···'
 	setting_bt.name = 'setting'
+	setting_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	setting_bt.connect("pressed", _on_setting_bt_pressed)
 	hbox_l1.add_child(setting_bt)
 	
@@ -164,72 +180,87 @@ func build_gui() -> void:
 	var login_tiltle_label:Label = Label.new()
 	login_tiltle_label.name = 'login_tiltle_label'
 	login_tiltle_label.text = '登陆信息'
+	login_tiltle_label.label_settings = label_setting_font_30
+	login_tiltle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hbox_login_l1.add_child(login_tiltle_label)
 	
 	var ue_root_dir_label:Label = Label.new()
 	ue_root_dir_label.name = 'ue_root_dir_label'
 	ue_root_dir_label.text = '同步目录:'
+	ue_root_dir_label.label_settings = label_setting_font_30
 	hbox_login_l1_1.add_child(ue_root_dir_label)
 	var ue_root_dir_input:LineEdit = LineEdit.new()
 	ue_root_dir_input.name = 'ue_root_dir_input'
 	ue_root_dir_input.text = UE_ROOT_DIR
 	ue_root_dir_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ue_root_dir_input.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	hbox_login_l1_1.add_child(ue_root_dir_input)
 	
 	var server_ip_label:Label = Label.new()
 	server_ip_label.name = 'server_ip_label'
 	server_ip_label.text = '服务器IP:'
+	server_ip_label.label_settings = label_setting_font_30
 	hbox_login_l2.add_child(server_ip_label)
 	var server_ip_input:LineEdit = LineEdit.new()
 	server_ip_input.name = 'server_ip_input'
 	server_ip_input.text = SERVER_IP
 	server_ip_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	server_ip_input.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	hbox_login_l2.add_child(server_ip_input)
 	
 	var upload_port_label:Label = Label.new()
 	upload_port_label.name = 'upload_port_label'
 	upload_port_label.text = '上传端口:'
+	upload_port_label.label_settings = label_setting_font_30
 	hbox_login_l3.add_child(upload_port_label)
 	var upload_port_input:LineEdit = LineEdit.new()
 	upload_port_input.name = 'upload_port_input'
 	upload_port_input.text = "%s"%UPLOAD_PORT
 	upload_port_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	upload_port_input.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	hbox_login_l3.add_child(upload_port_input)
 	
 	var download_port_label:Label = Label.new()
 	download_port_label.name = 'download_port_label'
 	download_port_label.text = '下载端口:'
+	download_port_label.label_settings = label_setting_font_30
 	hbox_login_l4.add_child(download_port_label)
 	var download_port_input:LineEdit = LineEdit.new()
 	download_port_input.name = 'download_port_input'
 	download_port_input.text = "%s"%DOWNLOAD_PORT
 	download_port_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	download_port_input.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	hbox_login_l4.add_child(download_port_input)
 	
 	var usr_label:Label = Label.new()
 	usr_label.name = 'usr_label'
 	usr_label.text = '用户名:'
+	usr_label.label_settings = label_setting_font_30
 	hbox_login_l5.add_child(usr_label)
 	var usr_input:LineEdit = LineEdit.new()
 	usr_input.name = 'usr_input'
 	usr_input.text = USR
 	usr_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	usr_input.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	hbox_login_l5.add_child(usr_input)
 	
 	var psd_label:Label = Label.new()
 	psd_label.name = 'psd_label'
 	psd_label.text = '密码:'
+	psd_label.label_settings = label_setting_font_30
 	hbox_login_l6.add_child(psd_label)
 	var psd_input:LineEdit = LineEdit.new()
 	psd_input.name = 'psd_input'
 	psd_input.text = PSD
 	psd_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	psd_input.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	hbox_login_l6.add_child(psd_input)
 	
 	var save_cfg_bt:Button = Button.new()
 	save_cfg_bt.name = 'save_cfg_bt'
 	save_cfg_bt.text = '登录&保存信息'
 	save_cfg_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	save_cfg_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	save_cfg_bt.connect("pressed", _on_save_cfg_bt_pressed.bind(login_tiltle_label, save_cfg_bt,
 	server_ip_input, upload_port_input, download_port_input, usr_input, psd_input, ue_root_dir_input))
 	hbox_login_l7.add_child(save_cfg_bt)
@@ -237,6 +268,7 @@ func build_gui() -> void:
 	test_bt.name = 'test_bt'
 	test_bt.text = '测试连接'
 	test_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	test_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	test_bt.connect("pressed", _on_test_bt_pressed.bind(login_tiltle_label, test_bt,
 	server_ip_input, upload_port_input, download_port_input, usr_input, psd_input, ue_root_dir_input))
 	hbox_login_l7.add_child(test_bt)
@@ -276,7 +308,7 @@ func build_gui() -> void:
 	var setting_save_bt:Button = Button.new()
 	setting_save_bt.name = 'setting_save_bt'
 	setting_save_bt.text = '保存配置'
-	setting_save_bt.add_theme_font_size_override('font_size', 10)
+	setting_save_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	setting_save_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	setting_save_bt.connect("pressed", _on_setting_save_bt_pressed.bind(setting_save_bt))
 	hbox_setting_l1.add_child(setting_save_bt)
@@ -284,7 +316,7 @@ func build_gui() -> void:
 	var dis_size_label:Label = Label.new()
 	dis_size_label.name = 'dis_size_label'
 	dis_size_label.text = '显示粒度:'
-	dis_size_label.label_settings = label_setting_font_10
+	dis_size_label.label_settings = label_setting_font_30
 	hbox_setting_l2.add_child(dis_size_label)
 	var radio_group:ButtonGroup = ButtonGroup.new()
 	var radio_day:CheckBox = CheckBox.new()
@@ -302,9 +334,9 @@ func build_gui() -> void:
 	radio_week.text = '周'
 	radio_month.name = 'MONTH'
 	radio_month.text = '月'
-	radio_day.add_theme_font_size_override("font_size", 10)
-	radio_week.add_theme_font_size_override("font_size", 10)
-	radio_month.add_theme_font_size_override("font_size", 10)
+	radio_day.add_theme_font_size_override("font_size", DEFAULT_FONT_SIZE)
+	radio_week.add_theme_font_size_override("font_size", DEFAULT_FONT_SIZE)
+	radio_month.add_theme_font_size_override("font_size", DEFAULT_FONT_SIZE)
 	radio_day.connect("toggled", _on_dis_size_toggled.bind(radio_day))
 	radio_week.connect("toggled", _on_dis_size_toggled.bind(radio_week))
 	radio_month.connect("toggled", _on_dis_size_toggled.bind(radio_month))
@@ -318,38 +350,37 @@ func build_gui() -> void:
 	hbox_setting_l2.add_child(radio_week)
 	hbox_setting_l2.add_child(radio_month)
 	
-	var vbox_time:VBoxContainer = VBoxContainer.new()
-	var hbox_time_l1:HBoxContainer = HBoxContainer.new()
-	var hbox_time_l2:HBoxContainer = HBoxContainer.new()
 	var duration_label:Label = Label.new()
 	duration_label.name = 'duration_label'
 	duration_label.text = '时间范围:'
-	duration_label.label_settings = label_setting_font_10
+	duration_label.label_settings = label_setting_font_30
 	hbox_setting_l3.add_child(duration_label)
 	var y1:OptionButton = OptionButton.new()
 	var m1:OptionButton = OptionButton.new()
 	var d1:OptionButton = OptionButton.new()
+	var s:Control = Control.new()
 	var y2:OptionButton = OptionButton.new()
 	var m2:OptionButton = OptionButton.new()
 	var d2:OptionButton = OptionButton.new()
+	s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	y1.name = 'y1'
 	m1.name = 'm1'
 	d1.name = 'd1'
 	y2.name = 'y2'
 	m2.name = 'm2'
 	d2.name = 'd2'
-	hbox_time_l1.add_child(y1)
-	hbox_time_l1.add_child(m1)
-	hbox_time_l1.add_child(d1)
-	hbox_time_l2.add_child(y2)
-	hbox_time_l2.add_child(m2)
-	hbox_time_l2.add_child(d2)
-	y1.add_theme_font_size_override('font_size', 10)
-	m1.add_theme_font_size_override('font_size', 10)
-	d1.add_theme_font_size_override('font_size', 10)
-	y2.add_theme_font_size_override('font_size', 10)
-	m2.add_theme_font_size_override('font_size', 10)
-	d2.add_theme_font_size_override('font_size', 10)
+	y1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	m1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	d1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	y2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	m2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	d2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	y1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	m1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	d1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	y2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	m2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	d2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	for idx in range(TIME_ITEM[1] - TIME_ITEM[0]):
 		y1.add_item("%s"%[TIME_ITEM[0] + idx], idx)
 	for idx in range(TIME_ITEM[1] - TIME_ITEM[0]):
@@ -376,17 +407,18 @@ func build_gui() -> void:
 	y2.select(time_dict_2.year - TIME_ITEM[0])
 	m2.select(time_dict_2.month - 1)
 	d2.select(time_dict_2.day -1)
-	vbox_time.add_child(hbox_time_l1)
-	vbox_time.add_child(hbox_time_l2)
-	hbox_setting_l3.add_child(vbox_time)
+	hbox_setting_l3.add_child(y1)
+	hbox_setting_l3.add_child(m1)
+	hbox_setting_l3.add_child(d1)
+	hbox_setting_l3.add_child(s)
+	hbox_setting_l3.add_child(y2)
+	hbox_setting_l3.add_child(m2)
+	hbox_setting_l3.add_child(d2)
 	
 	var sort_method_label:Label = Label.new()
-	var sort_p1:VBoxContainer = VBoxContainer.new()
-	var sort_p2:VBoxContainer = VBoxContainer.new()
-	var sort_p3:VBoxContainer = VBoxContainer.new()
 	sort_method_label.name = 'sort_method_label'
 	sort_method_label.text = '排序方式:'
-	sort_method_label.label_settings = label_setting_font_10
+	sort_method_label.label_settings = label_setting_font_30
 	hbox_setting_l4.add_child(sort_method_label)
 	var radio_group_1:ButtonGroup = ButtonGroup.new()
 	var nameaz_bt:CheckBox = CheckBox.new()
@@ -401,24 +433,24 @@ func build_gui() -> void:
 	timeza_bt.button_group = radio_group_1
 	sizeaz_bt.button_group = radio_group_1
 	sizeza_bt.button_group = radio_group_1
-	nameaz_bt.text = '名字\n顺序'
+	nameaz_bt.text = '名字顺序'
 	nameaz_bt.name = 'NAME_AZ'
-	nameza_bt.text = '名字\n倒序'
+	nameza_bt.text = '名字倒序'
 	nameza_bt.name = 'NAME_ZA'
-	timeaz_bt.text = '时间\n顺序'
+	timeaz_bt.text = '时间顺序'
 	timeaz_bt.name = 'TIME_AZ'
-	timeza_bt.text = '时间\n倒序'
+	timeza_bt.text = '时间倒序'
 	timeza_bt.name = 'TIME_ZA'
-	sizeaz_bt.text = '大小\n顺序'
+	sizeaz_bt.text = '大小顺序'
 	sizeaz_bt.name = 'SIZE_AZ'
-	sizeza_bt.text = '大小\n逆序'
+	sizeza_bt.text = '大小逆序'
 	sizeza_bt.name = 'SIZE_ZA'
-	nameaz_bt.add_theme_font_size_override('font_size', 10)
-	nameza_bt.add_theme_font_size_override('font_size', 10)
-	timeaz_bt.add_theme_font_size_override('font_size', 10)
-	timeza_bt.add_theme_font_size_override('font_size', 10)
-	sizeaz_bt.add_theme_font_size_override('font_size', 10)
-	sizeza_bt.add_theme_font_size_override('font_size', 10)
+	nameaz_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE - 5)
+	nameza_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE - 5)
+	timeaz_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE - 5)
+	timeza_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE - 5)
+	sizeaz_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE - 5)
+	sizeza_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE - 5)
 	nameaz_bt.connect('toggled', _on_sort_method_toggled.bind(nameaz_bt))
 	nameza_bt.connect('toggled', _on_sort_method_toggled.bind(nameza_bt))
 	timeaz_bt.connect('toggled', _on_sort_method_toggled.bind(timeaz_bt))
@@ -437,31 +469,29 @@ func build_gui() -> void:
 		sizeaz_bt.set_pressed_no_signal(true)
 	elif SORT_METHOD == 'SIZE_ZA':
 		sizeza_bt.set_pressed_no_signal(true)
-	sort_p1.add_child(nameaz_bt)
-	sort_p1.add_child(nameza_bt)
-	sort_p2.add_child(timeaz_bt)
-	sort_p2.add_child(timeza_bt)
-	sort_p3.add_child(sizeaz_bt)
-	sort_p3.add_child(sizeza_bt)
-	hbox_setting_l4.add_child(sort_p1)
-	hbox_setting_l4.add_child(sort_p2)
-	hbox_setting_l4.add_child(sort_p3)
+	hbox_setting_l4.add_child(nameaz_bt)
+	hbox_setting_l4.add_child(nameza_bt)
+	hbox_setting_l4.add_child(timeaz_bt)
+	hbox_setting_l4.add_child(timeza_bt)
+	hbox_setting_l4.add_child(sizeaz_bt)
+	hbox_setting_l4.add_child(sizeza_bt)
 	
 	var ue_save_duration_label:Label = Label.new()
 	ue_save_duration_label.name = 'ue_save_duration_label'
 	ue_save_duration_label.text = '手机存储天数:'
-	ue_save_duration_label.label_settings = label_setting_font_10
+	ue_save_duration_label.label_settings = label_setting_font_30
 	hbox_setting_l5.add_child(ue_save_duration_label)
 	var ue_save_duration_input:LineEdit = LineEdit.new()
 	ue_save_duration_input.name = 'ue_save_duration_input'
 	ue_save_duration_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ue_save_duration_input.text = "%s"%UE_SAVE_TIME
+	ue_save_duration_input.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	hbox_setting_l5.add_child(ue_save_duration_input)
 	
 	var iabout:Button = Button.new()
 	iabout.name = 'iabout'
 	iabout.text = '关于...'
-	iabout.add_theme_font_size_override('font_size', 10)
+	iabout.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	iabout.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hbox_setting_l6.add_child(iabout)
 	
@@ -474,14 +504,19 @@ func build_gui() -> void:
 	### L2
 	var opt_bt:OptionButton = OptionButton.new()
 	opt_bt.name = 'show_type'
+	opt_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	for eacht in DIS_FILE_TYPE:
+		opt_bt.add_item(eacht)
 	hbox_l2.add_child(opt_bt)
 	var input_txt:LineEdit = LineEdit.new()
 	input_txt.name = 'search_input'
+	input_txt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	hbox_l2.add_child(input_txt)
 	input_txt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var cfm_bt:Button = Button.new()
 	cfm_bt.text = '查询'
 	cfm_bt.name = 'search_cfm'
+	cfm_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	hbox_l2.add_child(cfm_bt)
 	
 	### L3
@@ -502,6 +537,7 @@ func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 	var title_label:Label = Label.new()
 	title_label.text = timek
 	title_label.name = 'title_label'
+	title_label.label_settings = label_setting_font_30
 	var grid_container:GridContainer = GridContainer.new()
 	grid_container.columns = 3
 	grid_container.name = 'grid_container'
@@ -517,7 +553,7 @@ func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 		texture_rec.name = "texture_rec"
 		var texture_label:Label = Label.new()
 		texture_label.name = 'texture_label'
-		texture_label.label_settings = label_setting_font_10
+		texture_label.label_settings = label_setting_font_30
 		var show_name_list:Array = wrap_txt("%s   %.1fMb"%[filename, filesize], 20)
 		if len(show_name_list) > 3:
 			texture_label.text = "%s\n%s\n%s"%[show_name_list[0], '... ...', show_name_list[2]]
