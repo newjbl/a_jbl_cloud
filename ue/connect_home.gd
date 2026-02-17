@@ -1,9 +1,10 @@
 extends Node2D
 
-var CFG_PATH:String = "res://db/cfg.ini"
-var SETTING_PATH:String = "res://db/setting.ini"
-var ICON_DIR:String = "res://db/icon/"
-var UE_ROOT_DIR:String = r''
+var CFG_PATH:String = "user://db/cfg.ini"
+var SETTING_PATH:String = "user://db/setting.ini"
+var ICON_DIR:String = "user://db/icon/"
+var UE_ROOT_DIR:String = r'/storage/emulated/0'
+var SCAN_DIR_LIST:Array = []
 var SERVER_IP:String = ''
 var UPLOAD_PORT:int = 6666
 var DOWNLOAD_PORT:int = 7777
@@ -15,8 +16,8 @@ var DIS_DURATION:Array = [0, 4290604800]
 var SORT_METHOD:String = 'NAME_AZ'# NAME_ZA, TIME_AZ, TIME_ZA, SIZE_AZ, SIZE_ZA
 var UE_SAVE_TIME:int = 30
 var DIS_FILE_TYPE:Array = ['zip']
-var DEFAULT_FONT_SIZE:int = 30
-var label_setting_font_30:LabelSettings = null
+var DEFAULT_FONT_SIZE:int = 60
+var label_setting_font_60:LabelSettings = null
 var label_setting_font_red:LabelSettings = null
 var label_setting_font_blue:LabelSettings = null
 
@@ -28,7 +29,8 @@ var vbox_l1_2_setting:VBoxContainer = null
 var hbox_l2:HBoxContainer = null
 var vbox_l3:VBoxContainer = null
 var vbox_l3_vbox:VBoxContainer = null
-
+var scan_bt:Button = null
+var upload_bt:Button = null
 var TIME_ITEM:Array = [1986, 2106]
 
 var states:Dictionary = {
@@ -57,9 +59,15 @@ var delete_dic:Dictionary = {}
 var query_rt:String = ''
 var upload_finish:bool = false
 
+var log_window = null
+
+
 func _ready() -> void:
-	label_setting_font_30 = LabelSettings.new()
-	label_setting_font_30.font_size = 30
+	log_window = preload("res://class/log_window.tscn").instantiate()
+	add_child(log_window)
+	print(ProjectSettings.globalize_path("user://"))
+	label_setting_font_60 = LabelSettings.new()
+	label_setting_font_60.font_size = 60
 	label_setting_font_red = LabelSettings.new()
 	label_setting_font_red.font_color = Color(1.0, 0.0, 0.0, 1.0)
 	label_setting_font_blue = LabelSettings.new()
@@ -67,11 +75,11 @@ func _ready() -> void:
 	
 	load_cfg()
 	load_setting()
-	print(UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, DOWNLOAD_PORT)
+	log_window.add_log("%s, %s, %s, %s" % [UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, DOWNLOAD_PORT])
 	build_gui()
-	#if current_state == 'init':
-	#	update_state()
-	for_test()
+	if current_state == 'init':
+		update_state()
+	#for_test()
 
 func for_test() -> void:
 	#current_state = 'query_files'
@@ -82,22 +90,23 @@ func for_test() -> void:
 
 ########################################### for GUI ################################
 func build_gui() -> void:
-	print('[connect_home]->build_gui')
-	win_size = DisplayServer.window_get_size()
-	print(win_size)
+	log_window.add_log('[connect_home]->build_gui')
+	win_size = DisplayServer.window_get_size() - Vector2i(100, 100)
+	log_window.add_log("%s, %s"%[win_size.x, win_size.y])
 	var vbox_top:VBoxContainer = VBoxContainer.new()
 	vbox_top.name = 'TOP'
 	vbox_top.size = win_size
+	vbox_top.position = Vector2i(50, 50)
 	
 	var hbox_l0 = HBoxContainer.new()
 	hbox_l0.name = 'title'
-	var title_label:Label = Label.new()
-	title_label.text = '文件回家 V0.1'
-	title_label.size = Vector2i(win_size.x, 50)
-	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title_label.label_settings = label_setting_font_30
-	hbox_l0.add_child(title_label)
+	var app_title_label:Label = Label.new()
+	app_title_label.text = '文件回家 V0.3.4'
+	app_title_label.size = Vector2i(win_size.x, 50)
+	app_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	app_title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	app_title_label.label_settings = label_setting_font_60
+	hbox_l0.add_child(app_title_label)
 	
 	
 	hbox_l1 = HBoxContainer.new()
@@ -137,10 +146,20 @@ func build_gui() -> void:
 	login_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	login_bt.connect("pressed", _on_login_bt_pressed)
 	hbox_l1.add_child(login_bt)
-	var sp:Control = Control.new()
-	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sp.name = 'space'
-	hbox_l1.add_child(sp)
+	scan_bt = Button.new()
+	scan_bt.text = '扫描文件'
+	scan_bt.name = 'scan_bt'
+	scan_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scan_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	scan_bt.connect("pressed", _on_scan_bt_pressed)
+	hbox_l1.add_child(scan_bt)
+	upload_bt = Button.new()
+	upload_bt.text = '上传文件'
+	upload_bt.name = 'upload_bt'
+	upload_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	upload_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	upload_bt.connect("pressed", _on_upload_bt_pressed)
+	hbox_l1.add_child(upload_bt)
 	var setting_bt:Button = Button.new()
 	setting_bt.text = '···'
 	setting_bt.name = 'setting'
@@ -150,7 +169,6 @@ func build_gui() -> void:
 	
 	### l1 login
 	var hbox_login_l1:HBoxContainer = HBoxContainer.new()
-	var hbox_login_l1_1:HBoxContainer = HBoxContainer.new()
 	var hbox_login_l2:HBoxContainer = HBoxContainer.new()
 	var hbox_login_l3:HBoxContainer = HBoxContainer.new()
 	var hbox_login_l4:HBoxContainer = HBoxContainer.new()
@@ -159,7 +177,6 @@ func build_gui() -> void:
 	var hbox_login_l7:HBoxContainer = HBoxContainer.new()
 	var hbox_login_le:HBoxContainer = HBoxContainer.new()
 	hbox_login_l1.name = 'hbox_login_l1'
-	hbox_login_l1_1.name = 'hbox_login_l1_1'
 	hbox_login_l2.name = 'hbox_login_l2'
 	hbox_login_l3.name = 'hbox_login_l3'
 	hbox_login_l4.name = 'hbox_login_l4'
@@ -168,7 +185,6 @@ func build_gui() -> void:
 	hbox_login_l7.name = 'hbox_login_l7'
 	hbox_login_le.name = 'hbox_login_le'
 	vbox_l1_1_login.add_child(hbox_login_l1)
-	vbox_l1_1_login.add_child(hbox_login_l1_1)
 	vbox_l1_1_login.add_child(hbox_login_l2)
 	vbox_l1_1_login.add_child(hbox_login_l3)
 	vbox_l1_1_login.add_child(hbox_login_l4)
@@ -180,26 +196,15 @@ func build_gui() -> void:
 	var login_tiltle_label:Label = Label.new()
 	login_tiltle_label.name = 'login_tiltle_label'
 	login_tiltle_label.text = '登陆信息'
-	login_tiltle_label.label_settings = label_setting_font_30
+	login_tiltle_label.label_settings = label_setting_font_60
 	login_tiltle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	login_tiltle_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hbox_login_l1.add_child(login_tiltle_label)
-	
-	var ue_root_dir_label:Label = Label.new()
-	ue_root_dir_label.name = 'ue_root_dir_label'
-	ue_root_dir_label.text = '同步目录:'
-	ue_root_dir_label.label_settings = label_setting_font_30
-	hbox_login_l1_1.add_child(ue_root_dir_label)
-	var ue_root_dir_input:LineEdit = LineEdit.new()
-	ue_root_dir_input.name = 'ue_root_dir_input'
-	ue_root_dir_input.text = UE_ROOT_DIR
-	ue_root_dir_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	ue_root_dir_input.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
-	hbox_login_l1_1.add_child(ue_root_dir_input)
 	
 	var server_ip_label:Label = Label.new()
 	server_ip_label.name = 'server_ip_label'
 	server_ip_label.text = '服务器IP:'
-	server_ip_label.label_settings = label_setting_font_30
+	server_ip_label.label_settings = label_setting_font_60
 	hbox_login_l2.add_child(server_ip_label)
 	var server_ip_input:LineEdit = LineEdit.new()
 	server_ip_input.name = 'server_ip_input'
@@ -211,7 +216,7 @@ func build_gui() -> void:
 	var upload_port_label:Label = Label.new()
 	upload_port_label.name = 'upload_port_label'
 	upload_port_label.text = '上传端口:'
-	upload_port_label.label_settings = label_setting_font_30
+	upload_port_label.label_settings = label_setting_font_60
 	hbox_login_l3.add_child(upload_port_label)
 	var upload_port_input:LineEdit = LineEdit.new()
 	upload_port_input.name = 'upload_port_input'
@@ -223,7 +228,7 @@ func build_gui() -> void:
 	var download_port_label:Label = Label.new()
 	download_port_label.name = 'download_port_label'
 	download_port_label.text = '下载端口:'
-	download_port_label.label_settings = label_setting_font_30
+	download_port_label.label_settings = label_setting_font_60
 	hbox_login_l4.add_child(download_port_label)
 	var download_port_input:LineEdit = LineEdit.new()
 	download_port_input.name = 'download_port_input'
@@ -235,7 +240,7 @@ func build_gui() -> void:
 	var usr_label:Label = Label.new()
 	usr_label.name = 'usr_label'
 	usr_label.text = '用户名:'
-	usr_label.label_settings = label_setting_font_30
+	usr_label.label_settings = label_setting_font_60
 	hbox_login_l5.add_child(usr_label)
 	var usr_input:LineEdit = LineEdit.new()
 	usr_input.name = 'usr_input'
@@ -247,7 +252,7 @@ func build_gui() -> void:
 	var psd_label:Label = Label.new()
 	psd_label.name = 'psd_label'
 	psd_label.text = '密码:'
-	psd_label.label_settings = label_setting_font_30
+	psd_label.label_settings = label_setting_font_60
 	hbox_login_l6.add_child(psd_label)
 	var psd_input:LineEdit = LineEdit.new()
 	psd_input.name = 'psd_input'
@@ -262,7 +267,7 @@ func build_gui() -> void:
 	save_cfg_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	save_cfg_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	save_cfg_bt.connect("pressed", _on_save_cfg_bt_pressed.bind(login_tiltle_label, save_cfg_bt,
-	server_ip_input, upload_port_input, download_port_input, usr_input, psd_input, ue_root_dir_input))
+	server_ip_input, upload_port_input, download_port_input, usr_input, psd_input))
 	hbox_login_l7.add_child(save_cfg_bt)
 	var test_bt:Button = Button.new()
 	test_bt.name = 'test_bt'
@@ -270,7 +275,7 @@ func build_gui() -> void:
 	test_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	test_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	test_bt.connect("pressed", _on_test_bt_pressed.bind(login_tiltle_label, test_bt,
-	server_ip_input, upload_port_input, download_port_input, usr_input, psd_input, ue_root_dir_input))
+	server_ip_input, upload_port_input, download_port_input, usr_input, psd_input))
 	hbox_login_l7.add_child(test_bt)
 	
 	var line1:Line2D = Line2D.new()
@@ -279,8 +284,13 @@ func build_gui() -> void:
 	line1.add_point(Vector2i(win_size.x, 0))
 	hbox_login_le.add_child(line1)
 	
+	if _on_test_bt_pressed(login_tiltle_label, test_bt,
+	server_ip_input, upload_port_input, download_port_input, usr_input, psd_input, 3, 1):
+		login_bt.text = USR
+	
 	### l2 setting
 	var hbox_setting_l1:HBoxContainer = HBoxContainer.new()
+	var hbox_setting_l1_1:HBoxContainer = HBoxContainer.new()
 	var hbox_setting_l2:HBoxContainer = HBoxContainer.new()
 	var hbox_setting_l3:HBoxContainer = HBoxContainer.new()
 	var hbox_setting_l4:HBoxContainer = HBoxContainer.new()
@@ -289,6 +299,7 @@ func build_gui() -> void:
 	var hbox_setting_l7:HBoxContainer = HBoxContainer.new()
 	var hbox_setting_le:HBoxContainer = HBoxContainer.new()
 	hbox_setting_l1.name = 'hbox_setting_l1'
+	hbox_setting_l1_1.name = 'hbox_setting_l1_1'
 	hbox_setting_l2.name = 'hbox_setting_l2'
 	hbox_setting_l3.name = 'hbox_setting_l3'
 	hbox_setting_l4.name = 'hbox_setting_l4'
@@ -297,6 +308,7 @@ func build_gui() -> void:
 	hbox_setting_l7.name = 'hbox_setting_l7'
 	hbox_setting_le.name = 'hbox_setting_le'
 	vbox_l1_2_setting.add_child(hbox_setting_l1)
+	vbox_l1_2_setting.add_child(hbox_setting_l1_1)
 	vbox_l1_2_setting.add_child(hbox_setting_l2)
 	vbox_l1_2_setting.add_child(hbox_setting_l3)
 	vbox_l1_2_setting.add_child(hbox_setting_l4)
@@ -313,10 +325,49 @@ func build_gui() -> void:
 	setting_save_bt.connect("pressed", _on_setting_save_bt_pressed.bind(setting_save_bt))
 	hbox_setting_l1.add_child(setting_save_bt)
 	
+	var ue_root_dir_label:Label = Label.new()
+	ue_root_dir_label.name = 'ue_root_dir_label'
+	ue_root_dir_label.text = '同步目录:'
+	ue_root_dir_label.label_settings = label_setting_font_60
+	hbox_setting_l1_1.add_child(ue_root_dir_label)
+	var cb_dcim:CheckBox = CheckBox.new()
+	var cb_pic:CheckBox = CheckBox.new()
+	var cb_dl:CheckBox = CheckBox.new()
+	cb_dcim.name = 'DCIM'
+	cb_dcim.text = '相机'
+	cb_dcim.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cb_dcim.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	cb_pic.name = 'Pictures'
+	cb_pic.text = '图库'
+	cb_pic.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cb_pic.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	cb_dl.name = 'Download'
+	cb_dl.text = '下载'
+	cb_dl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cb_dl.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	cb_dcim.connect('toggled', _on_scan_dir_cb_toggled.bind(cb_dcim))
+	cb_pic.connect('toggled', _on_scan_dir_cb_toggled.bind(cb_pic))
+	cb_dl.connect('toggled', _on_scan_dir_cb_toggled.bind(cb_dl))
+	hbox_setting_l1_1.add_child(cb_dcim)
+	hbox_setting_l1_1.add_child(cb_pic)
+	hbox_setting_l1_1.add_child(cb_dl)
+	if 'DCIM' in SCAN_DIR_LIST:
+		cb_dcim.set_pressed_no_signal(true)
+	else:
+		cb_dcim.set_pressed_no_signal(false)
+	if 'Pictures' in SCAN_DIR_LIST:
+		cb_pic.set_pressed_no_signal(true)
+	else:
+		cb_pic.set_pressed_no_signal(false)
+	if 'Download' in SCAN_DIR_LIST:
+		cb_dl.set_pressed_no_signal(true)
+	else:
+		cb_dl.set_pressed_no_signal(false)
+	
 	var dis_size_label:Label = Label.new()
 	dis_size_label.name = 'dis_size_label'
 	dis_size_label.text = '显示粒度:'
-	dis_size_label.label_settings = label_setting_font_30
+	dis_size_label.label_settings = label_setting_font_60
 	hbox_setting_l2.add_child(dis_size_label)
 	var radio_group:ButtonGroup = ButtonGroup.new()
 	var radio_day:CheckBox = CheckBox.new()
@@ -353,7 +404,7 @@ func build_gui() -> void:
 	var duration_label:Label = Label.new()
 	duration_label.name = 'duration_label'
 	duration_label.text = '时间范围:'
-	duration_label.label_settings = label_setting_font_30
+	duration_label.label_settings = label_setting_font_60
 	hbox_setting_l3.add_child(duration_label)
 	var y1:OptionButton = OptionButton.new()
 	var m1:OptionButton = OptionButton.new()
@@ -369,18 +420,18 @@ func build_gui() -> void:
 	y2.name = 'y2'
 	m2.name = 'm2'
 	d2.name = 'd2'
-	y1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
-	m1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
-	d1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
-	y2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
-	m2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
-	d2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
-	y1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
-	m1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
-	d1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
-	y2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
-	m2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
-	d2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	y1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
+	m1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
+	d1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
+	y2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
+	m2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
+	d2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
+	y1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
+	m1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
+	d1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
+	y2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
+	m2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
+	d2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
 	for idx in range(TIME_ITEM[1] - TIME_ITEM[0]):
 		y1.add_item("%s"%[TIME_ITEM[0] + idx], idx)
 	for idx in range(TIME_ITEM[1] - TIME_ITEM[0]):
@@ -418,7 +469,7 @@ func build_gui() -> void:
 	var sort_method_label:Label = Label.new()
 	sort_method_label.name = 'sort_method_label'
 	sort_method_label.text = '排序方式:'
-	sort_method_label.label_settings = label_setting_font_30
+	sort_method_label.label_settings = label_setting_font_60
 	hbox_setting_l4.add_child(sort_method_label)
 	var radio_group_1:ButtonGroup = ButtonGroup.new()
 	var nameaz_bt:CheckBox = CheckBox.new()
@@ -433,24 +484,24 @@ func build_gui() -> void:
 	timeza_bt.button_group = radio_group_1
 	sizeaz_bt.button_group = radio_group_1
 	sizeza_bt.button_group = radio_group_1
-	nameaz_bt.text = '名字顺序'
+	nameaz_bt.text = '名字\n顺序'
 	nameaz_bt.name = 'NAME_AZ'
-	nameza_bt.text = '名字倒序'
+	nameza_bt.text = '名字\n倒序'
 	nameza_bt.name = 'NAME_ZA'
-	timeaz_bt.text = '时间顺序'
+	timeaz_bt.text = '时间\n顺序'
 	timeaz_bt.name = 'TIME_AZ'
-	timeza_bt.text = '时间倒序'
+	timeza_bt.text = '时间\n倒序'
 	timeza_bt.name = 'TIME_ZA'
-	sizeaz_bt.text = '大小顺序'
+	sizeaz_bt.text = '大小\n顺序'
 	sizeaz_bt.name = 'SIZE_AZ'
-	sizeza_bt.text = '大小逆序'
+	sizeza_bt.text = '大小\n逆序'
 	sizeza_bt.name = 'SIZE_ZA'
-	nameaz_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE - 5)
-	nameza_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE - 5)
-	timeaz_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE - 5)
-	timeza_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE - 5)
-	sizeaz_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE - 5)
-	sizeza_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE - 5)
+	nameaz_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
+	nameza_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
+	timeaz_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
+	timeza_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
+	sizeaz_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
+	sizeza_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
 	nameaz_bt.connect('toggled', _on_sort_method_toggled.bind(nameaz_bt))
 	nameza_bt.connect('toggled', _on_sort_method_toggled.bind(nameza_bt))
 	timeaz_bt.connect('toggled', _on_sort_method_toggled.bind(timeaz_bt))
@@ -479,7 +530,7 @@ func build_gui() -> void:
 	var ue_save_duration_label:Label = Label.new()
 	ue_save_duration_label.name = 'ue_save_duration_label'
 	ue_save_duration_label.text = '手机存储天数:'
-	ue_save_duration_label.label_settings = label_setting_font_30
+	ue_save_duration_label.label_settings = label_setting_font_60
 	hbox_setting_l5.add_child(ue_save_duration_label)
 	var ue_save_duration_input:LineEdit = LineEdit.new()
 	ue_save_duration_input.name = 'ue_save_duration_input'
@@ -530,14 +581,14 @@ func build_gui() -> void:
 	scroll_container.custom_minimum_size.y = win_size.y - 20 - hbox_l1.size.y - hbox_l2.size.y
 	
 func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
-	print('[connect_home]->add_one_block')
+	log_window.add_log('[connect_home]->add_one_block')
 	var s:int = (win_size.x - 10) / 3
 	var vbox_block:VBoxContainer = VBoxContainer.new()
 	vbox_block.name = 'vbox_block_%s'%[idx]
 	var title_label:Label = Label.new()
 	title_label.text = timek
 	title_label.name = 'title_label'
-	title_label.label_settings = label_setting_font_30
+	title_label.label_settings = label_setting_font_60
 	var grid_container:GridContainer = GridContainer.new()
 	grid_container.columns = 3
 	grid_container.name = 'grid_container'
@@ -553,7 +604,7 @@ func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 		texture_rec.name = "texture_rec"
 		var texture_label:Label = Label.new()
 		texture_label.name = 'texture_label'
-		texture_label.label_settings = label_setting_font_30
+		texture_label.label_settings = label_setting_font_60
 		var show_name_list:Array = wrap_txt("%s   %.1fMb"%[filename, filesize], 20)
 		if len(show_name_list) > 3:
 			texture_label.text = "%s\n%s\n%s"%[show_name_list[0], '... ...', show_name_list[2]]
@@ -580,7 +631,7 @@ func wrap_txt(intxt:String, maxlen:int) -> Array:
 	return [intxt]
 	
 func sort_files_by_method_duration(f_table:Dictionary) -> Dictionary:
-	print('[connect_home]->sort_files_by_method_duration')
+	log_window.add_log('[connect_home]->sort_files_by_method_duration')
 	var result:Dictionary = {}
 	var start_ts:int = DIS_DURATION[0]
 	var end_ts:int = DIS_DURATION[1]
@@ -600,7 +651,7 @@ func sort_files_by_method_duration(f_table:Dictionary) -> Dictionary:
 			'MONTH':
 				key = _ts_to_month_str(ts)
 			_:
-				print('[connect_home]->sort_files_by_method_duration: DIS_SIZE Error')
+				log_window.add_log('[connect_home]->sort_files_by_method_duration: DIS_SIZE Error')
 				return {}
 		if not result.has(key):
 			result[key] = []
@@ -609,9 +660,9 @@ func sort_files_by_method_duration(f_table:Dictionary) -> Dictionary:
 	return rt
 
 func update_and_show_files() -> void:
-	print('[connect_home]->update_and_show_files')
+	log_window.add_log('[connect_home]->update_and_show_files')
 	var taskid:String = generate_task_id()
-	scan_files_obj = SCAN_C.new(taskid, UE_ROOT_DIR.path_join('files.txt'))
+	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), SCAN_DIR_LIST)
 	var f_table:Dictionary = scan_files_obj.read_db().get('all_files_dic', {})
 	var file_dic:Dictionary = sort_files_by_method_duration(f_table)
 	var idx:int = 0
@@ -657,19 +708,19 @@ func _ts_to_month_str(ts:int) -> String:
 	return "%04d-%02d"%[dt['year'], dt['month']]
 	
 func _on_login_bt_pressed() -> void:
-	print('[connect_home]->_on_login_bt_pressed')
+	log_window.add_log('[connect_home]->_on_login_bt_pressed')
 	vbox_l1_1_login.visible = not vbox_l1_1_login.visible
+	_force_win()
 	
 func _on_setting_bt_pressed() -> void:
-	print('[connect_home]->_on_setting_bt_pressed')
+	log_window.add_log('[connect_home]->_on_setting_bt_pressed')
 	vbox_l1_2_setting.visible = not vbox_l1_2_setting.visible
+	_force_win()
 
 func _on_save_cfg_bt_pressed(login_tiltle_label:Label, save_cfg_bt:Button, server_ip_input:LineEdit, 
-upload_port_input:LineEdit, download_port_input:LineEdit, usr_input:LineEdit, psd_input:LineEdit, 
-ue_root_dir_input:LineEdit) -> void:
-	print('[connect_home]->_on_save_cfg_bt_pressed')
+upload_port_input:LineEdit, download_port_input:LineEdit, usr_input:LineEdit, psd_input:LineEdit) -> void:
+	log_window.add_log('[connect_home]->_on_save_cfg_bt_pressed')
 	save_cfg_bt.text = '保存中... ...'
-	UE_ROOT_DIR = ue_root_dir_input.text
 	SERVER_IP = server_ip_input.text
 	UPLOAD_PORT = int(upload_port_input.text)
 	DOWNLOAD_PORT = int(download_port_input.text)
@@ -682,43 +733,43 @@ ue_root_dir_input:LineEdit) -> void:
 
 func _on_test_bt_pressed(login_title_label:Label, test_bt:Button, server_ip_input:LineEdit, 
 upload_port_input:LineEdit, download_port_input:LineEdit, usr_input:LineEdit, psd_input:LineEdit,
-ue_root_dir_input:LineEdit):
-	print('[connect_home]->_on_test_bt_pressed')
+poolmax=10, loopmax=3):
+	log_window.add_log('[connect_home]->_on_test_bt_pressed')
+	var r = false
 	test_bt.text = '测试中... ...'
-	var a = '同步目录存在' if (DirAccess.dir_exists_absolute(ue_root_dir_input.text) and ue_root_dir_input.text != '') else '同步目录不存在'
 	var _SERVER_IP:String = server_ip_input.text
 	var _UPLOAD_PORT:int = int(upload_port_input.text)
 	var _DOWNLOAD_PORT:int = int(download_port_input.text)
 	var _USR:String = usr_input.text
 	var _PSD:String = psd_input.text
 	var taskid:String = generate_task_id()
-	upload_obj = TCP_TRANSF_C.new(taskid, UE_ROOT_DIR, _SERVER_IP, _UPLOAD_PORT, _USR, _PSD, 3, 'no')
-	upload_obj.connect_to_server()
-	var r:bool = upload_obj.login_do()
-	if r and a == '同步目录存在':
+	upload_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, _SERVER_IP, _UPLOAD_PORT, _USR, _PSD, 3, 'no')
+	upload_obj.connect_to_server(poolmax)
+	r = upload_obj.login_do(loopmax)
+	if r:
+		login_title_label.text = '登录成功'
 		login_title_label.label_settings = label_setting_font_blue
 	else:
+		login_title_label.text = '登录失败'
 		login_title_label.label_settings = label_setting_font_red
-	if r:
-		login_title_label.text = '%s;登录成功'%[a]
-	else:
-		login_title_label.text = '%s;登录失败'%[a]
+		return false
 	test_bt.text = '测试连接'
 	upload_obj.disconnect_to_server()
+	return r
 
 func _on_setting_save_bt_pressed(setting_save_bt:Button) -> void:
-	print('[connect_home]->_on_setting_save_bt_pressed:%s, %s, %s, %s'%[DIS_SIZE, '~'.join(DIS_DURATION),
+	log_window.add_log('[connect_home]->_on_setting_save_bt_pressed:%s, %s, %s, %s, %s'%[';'.join(SCAN_DIR_LIST), DIS_SIZE, '~'.join(DIS_DURATION),
 	SORT_METHOD, UE_SAVE_TIME])
 	save_setting()	
 	setting_save_bt.add_theme_color_override('font_color', Color(0.0, 1.0, 0.0, 1.0))
 	
 func _on_dis_size_toggled(idx:int, a:CheckBox) -> void:
-	print('[connect_home]->_on_dis_size_toggled')
+	log_window.add_log('[connect_home]->_on_dis_size_toggled')
 	DIS_SIZE = a.name
 
 func _on_time_duration_selectd(idx:int, y1:OptionButton, m1:OptionButton, d1:OptionButton, 
 y2:OptionButton, m2:OptionButton, d2:OptionButton) -> void:
-	print("%s, %s, %s,   %s, %s, %s"%[y1.selected, m1.selected, d1.selected, y2.selected, 
+	log_window.add_log("%s, %s, %s,   %s, %s, %s"%[y1.selected, m1.selected, d1.selected, y2.selected, 
 	m2.selected, d2.selected])
 	var yy1:String = y1.get_item_text(y1.selected)
 	var mm1:String = m1.get_item_text(m1.selected)
@@ -726,13 +777,34 @@ y2:OptionButton, m2:OptionButton, d2:OptionButton) -> void:
 	var yy2:String = y2.get_item_text(y2.selected)
 	var mm2:String = m2.get_item_text(m2.selected)
 	var dd2:String = d2.get_item_text(d2.selected)
-	print("%s, %s, %s,   %s, %s, %s"%[yy1, mm1, dd1, yy2, mm2, dd2])
+	log_window.add_log("%s, %s, %s,   %s, %s, %s"%[yy1, mm1, dd1, yy2, mm2, dd2])
 	DIS_DURATION[0] = date_string_to_unix_timestamp(yy1, mm1, dd1)
 	DIS_DURATION[1] = date_string_to_unix_timestamp(yy2, mm2, dd2)
 	print(DIS_DURATION)
 
 func _on_sort_method_toggled(idx:int, a:CheckBox) -> void:
 	SORT_METHOD = a.name
+
+func _force_win() -> void:
+	hbox_l1.size = Vector2i(win_size.x, 40)
+	vbox_l1_1_login.size = Vector2i(win_size.x, 40)
+	vbox_l1_2_setting.size = Vector2i(win_size.x, 40)
+	hbox_l2.size = Vector2i(win_size.x, 40)
+	vbox_l3.size = Vector2i(win_size.x, 40)
+
+func _on_scan_bt_pressed() -> void:
+	log_window.add_log('[connect_home]->_on_scan_bt_pressed')
+
+func _on_upload_bt_pressed() -> void:
+	log_window.add_log('[connect_home]->_on_scan_bt_pressed')
+
+func _on_scan_dir_cb_toggled(idx:int, cb:CheckBox) -> void:
+	log_window.add_log('[connect_home]->_on_on_scan_dir_cb_toggled:%s, %s'%[idx, cb.name])
+	print(SCAN_DIR_LIST.find(cb.name))
+	if idx == 0 and cb.name in SCAN_DIR_LIST:
+		SCAN_DIR_LIST.remove_at(SCAN_DIR_LIST.find(cb.name))
+	if idx == 1 and cb.name not in SCAN_DIR_LIST:
+		SCAN_DIR_LIST.append(cb.name)
 	
 func date_string_to_unix_timestamp(y:String, m:String, d:String) -> int:
 	# 2. 构造初始日期字典
@@ -759,9 +831,9 @@ func get_days_in_month(month: int, year: int) -> int:
 ################################# for functions ##############################
 
 func query_files() -> void:
-	print("[connect_home]->query_files")
+	log_window.add_log("[connect_home]->query_files")
 	var taskid:String = generate_task_id()
-	query_obj = TCP_TRANSF_C.new(taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
+	query_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
 	query_obj.connect("report_result", _on_class_report_result)
 	var filedic:Dictionary = {}
 	for eachf in delete_dic:
@@ -772,7 +844,7 @@ func query_files() -> void:
 	
 func deal_files() -> void:
 	var taskid:String = generate_task_id()
-	scan_files_obj = SCAN_C.new(taskid, UE_ROOT_DIR.path_join('files.txt'))
+	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), SCAN_DIR_LIST)
 	var files_dic:Dictionary = scan_files_obj.read_db()
 	var all_files_dic:Dictionary = files_dic.get("all_files_dic", {})
 	for eachpath in all_files_dic:
@@ -791,7 +863,7 @@ func upload_files() -> void:
 
 func upload_files_thread() -> void:
 	for filepath in upload_dic:
-		print("[connect_home]->upload_files_thread: will upload a file:%s"%[filepath])
+		log_window.add_log("[connect_home]->upload_files_thread: will upload a file:%s"%[filepath])
 		upload_a_file(filepath)
 		while not upload_finish:
 			pass
@@ -809,7 +881,7 @@ func delete_files() -> void:
 	for filepath in delete_dic:
 		if filepath in upload_again_list:
 			continue
-		print('[connect_home]->delete_files:will delete file: %s'%[filepath])
+		log_window.add_log('[connect_home]->delete_files:will delete file: %s'%[filepath])
 		if FileAccess.file_exists(filepath):
 			DirAccess.remove_absolute(filepath)
 			delete_dic[filepath] = 'deleted'
@@ -818,30 +890,30 @@ func delete_files() -> void:
 	
 func upload_a_file(filepath) -> bool:
 	var taskid:String = generate_task_id()
-	upload_obj = TCP_TRANSF_C.new(taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
+	upload_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
 	upload_obj.connect("report_result", _on_class_report_result)
 	upload_obj.upload_a_file(filepath)
 	return true
 
 func pull_files_table() -> void:
-	print("[connect_home]->pull_files_table")
+	log_window.add_log("[connect_home]->pull_files_table")
 	var taskid:String = generate_task_id()
-	pull_obj = TCP_TRANSF_C.new(taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'yes')
+	pull_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'yes')
 	pull_obj.connect("report_result", _on_class_report_result)
 	var pull_file = UE_ROOT_DIR.path_join('files.txt')
 	pull_obj.download_a_file(pull_file, 1, 'ignore')
 
 func push_files_table() -> void:
-	print("[connect_home]->push_files_table")
+	log_window.add_log("[connect_home]->push_files_table")
 	var taskid:String = generate_task_id()
-	push_obj = TCP_TRANSF_C.new(taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'yes')
+	push_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'yes')
 	push_obj.connect("report_result", _on_class_report_result)
 	var push_file = UE_ROOT_DIR.path_join('files.txt')
 	push_obj.upload_a_file(push_file)
 
 func update_files_table_after_upload() -> void:
 	var taskid:String = generate_task_id()
-	scan_files_obj = SCAN_C.new(taskid, UE_ROOT_DIR.path_join('files.txt'))
+	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), SCAN_DIR_LIST)
 	var f_table:Dictionary = scan_files_obj.read_db().get('all_files_dic', {})
 	var d_table:Dictionary = scan_files_obj.read_db().get('rename_files_dic', {})
 	for eachfile in upload_dic:
@@ -853,7 +925,7 @@ func update_files_table_after_upload() -> void:
 	
 func update_files_table_after_delete() -> void:
 	var taskid:String = generate_task_id()
-	scan_files_obj = SCAN_C.new(taskid, UE_ROOT_DIR.path_join('files.txt'))
+	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), SCAN_DIR_LIST)
 	var f_table:Dictionary = scan_files_obj.read_db().get('all_files_dic', {})
 	var d_table:Dictionary = scan_files_obj.read_db().get('rename_files_dic', {})
 	for eachfile in delete_dic:
@@ -864,26 +936,27 @@ func update_files_table_after_delete() -> void:
 	scan_files_obj.write_db({'all_files_dic': f_table, 'rename_files_dic': d_table})
 	
 func scan_files() -> void:
-	print("[connect_home]->scan_files")
+	log_window.add_log("[connect_home]->scan_files")
 	var taskid:String = generate_task_id()
-	scan_files_obj = SCAN_C.new(taskid, UE_ROOT_DIR.path_join('files.txt'))
+	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), SCAN_DIR_LIST)
 	scan_files_obj.connect("scan_finished", _on_class_report_result)
 	scan_files_obj.scan_a_dir(UE_ROOT_DIR)
 	
 func save_cfg():
-	var cfg_infor:String = "UE_ROOT_DIR:%s\nSERVER_IP:%s\nUPLOAD_PORT:%s\nDOWNLOAD_PORT:%s\nUSR:%s\nPSD:%s\n"%[UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, DOWNLOAD_PORT, USR, PSD]
+	var cfg_infor:String = "SERVER_IP:%s\nUPLOAD_PORT:%s\nDOWNLOAD_PORT:%s\nUSR:%s\nPSD:%s\n"%[SERVER_IP, UPLOAD_PORT, DOWNLOAD_PORT, USR, PSD]
+	var dir:String = CFG_PATH.get_base_dir()
+	if not DirAccess.dir_exists_absolute(dir):
+		DirAccess.make_dir_absolute(dir)
 	var f = FileAccess.open(CFG_PATH, FileAccess.WRITE)
 	if f:
 		f.store_string(cfg_infor)
 	else:
-		print('save cfg infor failed')
+		log_window.add_log('save cfg infor failed')
 
 func load_cfg():
 	var f = FileAccess.open(CFG_PATH, FileAccess.READ)
 	if f:
 		var cfg_infor = f.get_line()
-		UE_ROOT_DIR = cfg_infor.replace('UE_ROOT_DIR:', '')
-		cfg_infor = f.get_line()
 		SERVER_IP = cfg_infor.replace('SERVER_IP:', '')
 		cfg_infor = f.get_line()
 		UPLOAD_PORT = cfg_infor.replace('UPLOAD_PORT:', '').to_int()
@@ -894,20 +967,25 @@ func load_cfg():
 		cfg_infor = f.get_line()
 		PSD = cfg_infor.replace('PSD:', '')
 	else:
-		print('load cfg failed2')
+		log_window.add_log('load cfg failed2')
 
 func save_setting() -> void:
-	var setting_infor:String = "DIS_SIZE:%s\nDIS_DURATION:%s\nSORT_METHOD:%s\nUE_SAVE_TIME:%s"%[DIS_SIZE, '~'.join(DIS_DURATION), SORT_METHOD, UE_SAVE_TIME]
+	var setting_infor:String = "SCAN_DIR_LIST:%s\nDIS_SIZE:%s\nDIS_DURATION:%s\nSORT_METHOD:%s\nUE_SAVE_TIME:%s"%[';'.join(SCAN_DIR_LIST), DIS_SIZE, '~'.join(DIS_DURATION), SORT_METHOD, UE_SAVE_TIME]
+	var dir:String = SETTING_PATH.get_base_dir()
+	if not DirAccess.dir_exists_absolute(dir):
+		DirAccess.make_dir_absolute(dir)
 	var f = FileAccess.open(SETTING_PATH, FileAccess.WRITE)
 	if f:
 		f.store_string(setting_infor)
 	else:
-		print('save setting infor failed')
+		log_window.add_log('save setting infor failed')
 		
 func load_setting() -> void:
 	var f = FileAccess.open(SETTING_PATH, FileAccess.READ)
 	if f:
 		var cfg_infor = f.get_line()
+		SCAN_DIR_LIST = cfg_infor.replace('SCAN_DIR_LIST:', '').split(';')
+		cfg_infor = f.get_line()
 		DIS_SIZE = cfg_infor.replace('DIS_SIZE:', '')
 		cfg_infor = f.get_line()
 		var a:String = cfg_infor.replace('DIS_DURATION:', '')
@@ -918,7 +996,7 @@ func load_setting() -> void:
 		cfg_infor = f.get_line()
 		UE_SAVE_TIME = cfg_infor.replace('UE_SAVE_TIME:', '').to_int()
 	else:
-		print('load cfg failed2')
+		log_window.add_log('load cfg failed2')
 func generate_task_id() -> String:
 	var time = Time.get_ticks_msec()
 	var task_id = 'task_' + str(time)
@@ -934,14 +1012,14 @@ func if_need_delete_ue_file(file_dic:Dictionary, day:int=7) -> bool:
 func update_state() -> void:
 	var next_state = states.get(current_state, {}).get('next_state', '')
 	if next_state != '':
-		print("[connect_home]->update_state:%s>%s"%[current_state, next_state])
+		log_window.add_log("[connect_home]->update_state:%s>%s"%[current_state, next_state])
 		current_state = next_state
 		var next_func = states.get(next_state, {}).get('func', null)
 		if next_func != null:
 			next_func.call()
 
 func _on_class_report_result(who_i_am:String, taskid:String, req_type:String, infor:String, result:String) -> void:
-	print("[connect_home]->_on_class_report_result:%s-%s %s %s %s"%[who_i_am, taskid, req_type, infor, result])
+	log_window.add_log("[connect_home]->_on_class_report_result:%s-%s %s %s %s"%[who_i_am, taskid, req_type, infor, result])
 	if who_i_am == 'tcp_transf_class':
 		if current_state == 'pull_files_table':## pull finish
 			if req_type == 'download' and taskid == pull_obj.taskid:# and result == 'FINISH':
@@ -967,7 +1045,8 @@ func _on_class_report_result(who_i_am:String, taskid:String, req_type:String, in
 	elif who_i_am == 'connect_home':
 		if current_state == 'deal_files':# deal files finish
 			if req_type == 'deal_files' and result == 'FINISH':
-				update_state()
+				pass
+				#update_state()
 		elif current_state == 'upload_files':# upload all files finish
 			if req_type == 'upload_files' and result == 'FINISH':
 				update_state()
