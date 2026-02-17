@@ -1,0 +1,40 @@
+[gd_scene format=3 uid="uid://b4rqbl2eb0875"]
+
+[ext_resource type="Script" uid="uid://d11oryqli3k32" path="res://class/log_window.gd" id="1_ojsdp"]
+
+[node name="CanvasLayer" type="CanvasLayer" unique_id=945335744]
+script = ExtResource("1_ojsdp")
+
+[node name="LogWindow" type="Panel" parent="." unique_id=1126867466]
+modulate = Color(1, 1, 1, 0.5019608)
+custom_minimum_size = Vector2(600, 300)
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="LogWindow" unique_id=208163517]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="TitleBar" type="HBoxContainer" parent="LogWindow/VBoxContainer" unique_id=1980990745]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="LogWindow/VBoxContainer/TitleBar" unique_id=1917489046]
+layout_mode = 2
+text = "debug log:"
+
+[node name="Control" type="Control" parent="LogWindow/VBoxContainer/TitleBar" unique_id=443924712]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="clearButton" type="Button" parent="LogWindow/VBoxContainer/TitleBar" unique_id=1060955467]
+layout_mode = 2
+text = "clear button"
+
+[node name="closeButton" type="Button" parent="LogWindow/VBoxContainer/TitleBar" unique_id=494265720]
+layout_mode = 2
+text = "close button"
+
+[node name="LogText" type="RichTextLabel" parent="LogWindow/VBoxContainer" unique_id=958962361]
+custom_minimum_size = Vector2(600, 600)
+layout_mode = 2
