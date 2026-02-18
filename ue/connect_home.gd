@@ -794,6 +794,7 @@ func _force_win() -> void:
 
 func _on_scan_bt_pressed() -> void:
 	log_window.add_log('[connect_home]->_on_scan_bt_pressed')
+	
 
 func _on_upload_bt_pressed() -> void:
 	log_window.add_log('[connect_home]->_on_scan_bt_pressed')
