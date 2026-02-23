@@ -45,7 +45,7 @@ func _input(event):
 	if event is InputEventMouseMotion and dragging:
 		panel.position = event.position - drag_offset
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	if log_buffer.size() > 0:
 		for t in log_buffer:
 			log_text.append_text(t + '\n')

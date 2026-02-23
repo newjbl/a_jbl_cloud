@@ -4,7 +4,7 @@ var CFG_PATH:String = "user://db/cfg.ini"
 var SETTING_PATH:String = "user://db/setting.ini"
 var ICON_DIR:String = "user://db/icon/"
 var UE_ROOT_DIR:String = r'/storage/emulated/0'
-var SCAN_DIR_LIST:Array = []
+var SCAN_DIR_DIC:Dictionary = {'DCIM':'yes', 'Pictures':'yes', 'Download':'yes'}
 var SERVER_IP:String = ''
 var UPLOAD_PORT:int = 6666
 var DOWNLOAD_PORT:int = 7777
@@ -15,9 +15,16 @@ var DIS_SIZE:String = 'DAY'
 var DIS_DURATION:Array = [0, 4290604800]
 var SORT_METHOD:String = 'NAME_AZ'# NAME_ZA, TIME_AZ, TIME_ZA, SIZE_AZ, SIZE_ZA
 var UE_SAVE_TIME:int = 30
-var DIS_FILE_TYPE:Array = ['zip']
+var DIS_FILE_TYPE:Dictionary = {'Picture':{'JPG':'yes', 'JPEG':'yes', 'PNG':'yes', 'GIF':'yes', 'BMP':'yes', 'HEIC':'yes', 'WEBP':'yes', 'TIFF':'yes'},
+'Vedio': {'MP4':'yes', '3GP':'yes', '3G2':'yes', 'AVI':'yes', 'MOV':'yes', 'MKV':'yes', 'M4V':'yes', 'WMV':'yes', 'ASF':'yes', 'FLV':'yes'},
+'Music': {'MP3':'yes', 'WMA':'yes', 'OGG':'yes', 'FLAC':'yes', 'APE':'yes', 'WAV':'yes', 'AAC':'yes', 'M4A':'yes', 'AMR':'yes', '3GPP':'yes', 'MKA':'yes', 'AC3':'yes', 'DTS':'yes'},
+'Others': {}}
+var file_type_line_max_cnt:int = 6
 var DEFAULT_FONT_SIZE:int = 60
+var DEFAULT_FONT_HALF_SIZE:int = 30
 var label_setting_font_60:LabelSettings = null
+var label_setting_font_30:LabelSettings = null
+var label_setting_font_15:LabelSettings = null
 var label_setting_font_red:LabelSettings = null
 var label_setting_font_blue:LabelSettings = null
 
@@ -31,6 +38,9 @@ var vbox_l3:VBoxContainer = null
 var vbox_l3_vbox:VBoxContainer = null
 var scan_bt:Button = null
 var upload_bt:Button = null
+var delete_bt:Button = null
+var logs_show:Label = null
+var logs_dic:Dictionary = {'pre_current_status':'', 'current_status':'', 'res1':'', 'res2':'', 'message':''}
 var TIME_ITEM:Array = [1986, 2106]
 
 var states:Dictionary = {
@@ -47,6 +57,7 @@ var states:Dictionary = {
 }
 
 var current_state:String = 'init'
+var pre_current_state:String = 'init'
 var push_obj:TCP_TRANSF_C = null
 var pull_obj:TCP_TRANSF_C = null
 var upload_obj:TCP_TRANSF_C = null
@@ -60,14 +71,19 @@ var query_rt:String = ''
 var upload_finish:bool = false
 
 var log_window = null
-
+var debug_on_win:bool = false
 
 func _ready() -> void:
+	debug_on_win = true if OS.get_name() == 'Windows' else false
 	log_window = preload("res://class/log_window.tscn").instantiate()
 	add_child(log_window)
 	print(ProjectSettings.globalize_path("user://"))
 	label_setting_font_60 = LabelSettings.new()
 	label_setting_font_60.font_size = 60
+	label_setting_font_30 = LabelSettings.new()
+	label_setting_font_30.font_size = 30
+	label_setting_font_15 = LabelSettings.new()
+	label_setting_font_15.font_size = 15
 	label_setting_font_red = LabelSettings.new()
 	label_setting_font_red.font_color = Color(1.0, 0.0, 0.0, 1.0)
 	label_setting_font_blue = LabelSettings.new()
@@ -77,8 +93,8 @@ func _ready() -> void:
 	load_setting()
 	log_window.add_log("%s, %s, %s, %s" % [UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, DOWNLOAD_PORT])
 	build_gui()
-	if current_state == 'init':
-		update_state()
+	#if current_state == 'init':
+	#	update_state()
 	#for_test()
 
 func for_test() -> void:
@@ -98,7 +114,7 @@ func build_gui() -> void:
 	vbox_top.size = win_size
 	vbox_top.position = Vector2i(50, 50)
 	
-	var hbox_l0 = HBoxContainer.new()
+	var hbox_l0:HBoxContainer = HBoxContainer.new()
 	hbox_l0.name = 'title'
 	var app_title_label:Label = Label.new()
 	app_title_label.text = '文件回家 V0.3.4'
@@ -108,6 +124,16 @@ func build_gui() -> void:
 	app_title_label.label_settings = label_setting_font_60
 	hbox_l0.add_child(app_title_label)
 	
+	var hbox_l0_1:HBoxContainer = HBoxContainer.new()
+	hbox_l0_1.name = 'logs_show'
+	logs_show = Label.new()
+	logs_show.text = ''
+	logs_show.name = 'log_show'
+	logs_show.size = Vector2i(win_size.x, 50)
+	logs_show.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	logs_show.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	logs_show.label_settings = label_setting_font_15
+	hbox_l0_1.add_child(logs_show)
 	
 	hbox_l1 = HBoxContainer.new()
 	hbox_l1.size = Vector2i(win_size.x - 5, 40)
@@ -133,6 +159,7 @@ func build_gui() -> void:
 	
 	add_child(vbox_top)
 	vbox_top.add_child(hbox_l0)
+	vbox_top.add_child(hbox_l0_1)
 	vbox_top.add_child(hbox_l1)
 	vbox_top.add_child(vbox_l1_1_login)
 	vbox_top.add_child(vbox_l1_2_setting)
@@ -146,24 +173,35 @@ func build_gui() -> void:
 	login_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	login_bt.connect("pressed", _on_login_bt_pressed)
 	hbox_l1.add_child(login_bt)
+	
 	scan_bt = Button.new()
-	scan_bt.text = '扫描文件'
+	scan_bt.text = '1. 扫描文件'
 	scan_bt.name = 'scan_bt'
 	scan_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scan_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	scan_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
 	scan_bt.connect("pressed", _on_scan_bt_pressed)
 	hbox_l1.add_child(scan_bt)
+	
 	upload_bt = Button.new()
-	upload_bt.text = '上传文件'
+	upload_bt.text = '2. 上传文件'
 	upload_bt.name = 'upload_bt'
 	upload_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	upload_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	upload_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
 	upload_bt.connect("pressed", _on_upload_bt_pressed)
 	hbox_l1.add_child(upload_bt)
+	
+	delete_bt = Button.new()
+	delete_bt.text = '2. 删除文件'
+	delete_bt.name = 'upload_bt'
+	delete_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	delete_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	delete_bt.connect("pressed", _on_delete_bt_pressed)
+	hbox_l1.add_child(delete_bt)
+	
 	var setting_bt:Button = Button.new()
 	setting_bt.text = '···'
 	setting_bt.name = 'setting'
-	setting_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	setting_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
 	setting_bt.connect("pressed", _on_setting_bt_pressed)
 	hbox_l1.add_child(setting_bt)
 	
@@ -290,30 +328,48 @@ func build_gui() -> void:
 	
 	### l2 setting
 	var hbox_setting_l1:HBoxContainer = HBoxContainer.new()
+	var hbox_setting_l1_0:HBoxContainer = HBoxContainer.new()
 	var hbox_setting_l1_1:HBoxContainer = HBoxContainer.new()
+	var hbox_setting_l1_2:HBoxContainer = HBoxContainer.new()
 	var hbox_setting_l2:HBoxContainer = HBoxContainer.new()
 	var hbox_setting_l3:HBoxContainer = HBoxContainer.new()
 	var hbox_setting_l4:HBoxContainer = HBoxContainer.new()
 	var hbox_setting_l5:HBoxContainer = HBoxContainer.new()
 	var hbox_setting_l6:HBoxContainer = HBoxContainer.new()
+	var hbox_setting_l6_1:HBoxContainer = HBoxContainer.new()
+	var hbox_setting_l6_2:HBoxContainer = HBoxContainer.new()
+	var hbox_setting_l6_3:HBoxContainer = HBoxContainer.new()
+	var hbox_setting_l6_4:HBoxContainer = HBoxContainer.new()
 	var hbox_setting_l7:HBoxContainer = HBoxContainer.new()
 	var hbox_setting_le:HBoxContainer = HBoxContainer.new()
 	hbox_setting_l1.name = 'hbox_setting_l1'
+	hbox_setting_l1_0.name = 'hbox_setting_l1_0'
 	hbox_setting_l1_1.name = 'hbox_setting_l1_1'
+	hbox_setting_l1_2.name = 'hbox_setting_l1_2'
 	hbox_setting_l2.name = 'hbox_setting_l2'
 	hbox_setting_l3.name = 'hbox_setting_l3'
 	hbox_setting_l4.name = 'hbox_setting_l4'
 	hbox_setting_l5.name = 'hbox_setting_l5'
 	hbox_setting_l6.name = 'hbox_setting_l6'
+	hbox_setting_l6_1.name = 'hbox_setting_l6_1'
+	hbox_setting_l6_2.name = 'hbox_setting_l6_2'
+	hbox_setting_l6_3.name = 'hbox_setting_l6_3'
+	hbox_setting_l6_4.name = 'hbox_setting_l6_4'
 	hbox_setting_l7.name = 'hbox_setting_l7'
 	hbox_setting_le.name = 'hbox_setting_le'
 	vbox_l1_2_setting.add_child(hbox_setting_l1)
+	vbox_l1_2_setting.add_child(hbox_setting_l1_0)
 	vbox_l1_2_setting.add_child(hbox_setting_l1_1)
+	vbox_l1_2_setting.add_child(hbox_setting_l1_2)
 	vbox_l1_2_setting.add_child(hbox_setting_l2)
 	vbox_l1_2_setting.add_child(hbox_setting_l3)
 	vbox_l1_2_setting.add_child(hbox_setting_l4)
 	vbox_l1_2_setting.add_child(hbox_setting_l5)
 	vbox_l1_2_setting.add_child(hbox_setting_l6)
+	vbox_l1_2_setting.add_child(hbox_setting_l6_1)
+	vbox_l1_2_setting.add_child(hbox_setting_l6_2)
+	vbox_l1_2_setting.add_child(hbox_setting_l6_3)
+	vbox_l1_2_setting.add_child(hbox_setting_l6_4)
 	vbox_l1_2_setting.add_child(hbox_setting_l7)
 	vbox_l1_2_setting.add_child(hbox_setting_le)
 	
@@ -327,42 +383,49 @@ func build_gui() -> void:
 	
 	var ue_root_dir_label:Label = Label.new()
 	ue_root_dir_label.name = 'ue_root_dir_label'
-	ue_root_dir_label.text = '同步目录:'
 	ue_root_dir_label.label_settings = label_setting_font_60
-	hbox_setting_l1_1.add_child(ue_root_dir_label)
-	var cb_dcim:CheckBox = CheckBox.new()
-	var cb_pic:CheckBox = CheckBox.new()
-	var cb_dl:CheckBox = CheckBox.new()
-	cb_dcim.name = 'DCIM'
-	cb_dcim.text = '相机'
-	cb_dcim.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	cb_dcim.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
-	cb_pic.name = 'Pictures'
-	cb_pic.text = '图库'
-	cb_pic.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	cb_pic.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
-	cb_dl.name = 'Download'
-	cb_dl.text = '下载'
-	cb_dl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	cb_dl.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
-	cb_dcim.connect('toggled', _on_scan_dir_cb_toggled.bind(cb_dcim))
-	cb_pic.connect('toggled', _on_scan_dir_cb_toggled.bind(cb_pic))
-	cb_dl.connect('toggled', _on_scan_dir_cb_toggled.bind(cb_dl))
-	hbox_setting_l1_1.add_child(cb_dcim)
-	hbox_setting_l1_1.add_child(cb_pic)
-	hbox_setting_l1_1.add_child(cb_dl)
-	if 'DCIM' in SCAN_DIR_LIST:
-		cb_dcim.set_pressed_no_signal(true)
-	else:
-		cb_dcim.set_pressed_no_signal(false)
-	if 'Pictures' in SCAN_DIR_LIST:
-		cb_pic.set_pressed_no_signal(true)
-	else:
-		cb_pic.set_pressed_no_signal(false)
-	if 'Download' in SCAN_DIR_LIST:
-		cb_dl.set_pressed_no_signal(true)
-	else:
-		cb_dl.set_pressed_no_signal(false)
+	hbox_setting_l1_0.add_child(ue_root_dir_label)
+	var ue_root_dir_input:LineEdit = LineEdit.new()
+	ue_root_dir_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ue_root_dir_input.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	ue_root_dir_input.text = UE_ROOT_DIR
+	hbox_setting_l1_0.add_child(ue_root_dir_input)
+	
+	var scan_dir_label:Label = Label.new()
+	scan_dir_label.name = 'scan_dir_label'
+	scan_dir_label.text = '同步目录:'
+	scan_dir_label.label_settings = label_setting_font_60
+	hbox_setting_l1_1.add_child(scan_dir_label)
+	for eachdir in SCAN_DIR_DIC:
+		var cb_r:CheckBox = CheckBox.new()
+		cb_r.name = eachdir
+		cb_r.text = eachdir
+		cb_r.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cb_r.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+		if SCAN_DIR_DIC[eachdir] == 'yes':
+			cb_r.set_pressed_no_signal(true)
+		else:
+			cb_r.set_pressed_no_signal(false)
+		cb_r.connect("toggled", _on_scan_dir_cb_toggled)
+		hbox_setting_l1_1.add_child(cb_r)
+	var new_scan_dir_input:LineEdit = LineEdit.new()
+	new_scan_dir_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	new_scan_dir_input.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	var add_scan_dir_bt:Button = Button.new()
+	add_scan_dir_bt.name = 'add_scan_dir_bt'
+	add_scan_dir_bt.text = '新增目录'
+	add_scan_dir_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	add_scan_dir_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	add_scan_dir_bt.connect("pressed", _on_add_scan_dir_bt_pressed.bind('add', new_scan_dir_input, hbox_setting_l1_1))
+	var del_scan_dir_bt:Button = Button.new()
+	del_scan_dir_bt.name = 'del_scan_dir_bt'
+	del_scan_dir_bt.text = '删除目录'
+	del_scan_dir_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	del_scan_dir_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	del_scan_dir_bt.connect("pressed", _on_add_scan_dir_bt_pressed.bind('del', new_scan_dir_input, hbox_setting_l1_1))
+	hbox_setting_l1_2.add_child(new_scan_dir_input)
+	hbox_setting_l1_2.add_child(add_scan_dir_bt)
+	hbox_setting_l1_2.add_child(del_scan_dir_bt)
 	
 	var dis_size_label:Label = Label.new()
 	dis_size_label.name = 'dis_size_label'
@@ -420,18 +483,18 @@ func build_gui() -> void:
 	y2.name = 'y2'
 	m2.name = 'm2'
 	d2.name = 'd2'
-	y1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
-	m1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
-	d1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
-	y2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
-	m2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
-	d2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
-	y1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
-	m1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
-	d1.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
-	y2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
-	m2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
-	d2.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
+	y1.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	m1.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	d1.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	y2.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	m2.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	d2.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	y1.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	m1.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	d1.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	y2.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	m2.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	d2.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
 	for idx in range(TIME_ITEM[1] - TIME_ITEM[0]):
 		y1.add_item("%s"%[TIME_ITEM[0] + idx], idx)
 	for idx in range(TIME_ITEM[1] - TIME_ITEM[0]):
@@ -452,12 +515,13 @@ func build_gui() -> void:
 	d2.connect("item_selected", _on_time_duration_selectd.bind(y1, m1, d1, y2, m2, d2))
 	var time_dict_1:Dictionary = Time.get_datetime_dict_from_unix_time(DIS_DURATION[0])
 	var time_dict_2:Dictionary = Time.get_datetime_dict_from_unix_time(DIS_DURATION[1])
-	y1.select(time_dict_1.year - TIME_ITEM[0])
-	m1.select(time_dict_1.month - 1)
-	d1.select(time_dict_1.day -1)
-	y2.select(time_dict_2.year - TIME_ITEM[0])
-	m2.select(time_dict_2.month - 1)
-	d2.select(time_dict_2.day -1)
+	if time_dict_1.year >= TIME_ITEM[0] or time_dict_1.year <= TIME_ITEM[TIME_ITEM.size() - 1]:
+		y1.select(time_dict_1.year - TIME_ITEM[0])
+		m1.select(time_dict_1.month - 1)
+		d1.select(time_dict_1.day -1)
+		y2.select(time_dict_2.year - TIME_ITEM[0])
+		m2.select(time_dict_2.month - 1)
+		d2.select(time_dict_2.day -1)
 	hbox_setting_l3.add_child(y1)
 	hbox_setting_l3.add_child(m1)
 	hbox_setting_l3.add_child(d1)
@@ -496,12 +560,12 @@ func build_gui() -> void:
 	sizeaz_bt.name = 'SIZE_AZ'
 	sizeza_bt.text = '大小\n逆序'
 	sizeza_bt.name = 'SIZE_ZA'
-	nameaz_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
-	nameza_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
-	timeaz_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
-	timeza_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
-	sizeaz_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
-	sizeza_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE / 2)
+	nameaz_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	nameza_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	timeaz_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	timeza_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	sizeaz_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	sizeza_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
 	nameaz_bt.connect('toggled', _on_sort_method_toggled.bind(nameaz_bt))
 	nameza_bt.connect('toggled', _on_sort_method_toggled.bind(nameza_bt))
 	timeaz_bt.connect('toggled', _on_sort_method_toggled.bind(timeaz_bt))
@@ -539,12 +603,64 @@ func build_gui() -> void:
 	ue_save_duration_input.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	hbox_setting_l5.add_child(ue_save_duration_input)
 	
+	var rl:Dictionary = {'Picture': ['图片类型', hbox_setting_l6],
+	'Vedio': ['视频类型', hbox_setting_l6_1], 
+	'Music': ['音频类型', hbox_setting_l6_2], 
+	'Othres': ['其他类型', hbox_setting_l6_3], }
+	for filetype in DIS_FILE_TYPE:
+		var vbox_this_type:VBoxContainer = VBoxContainer.new()
+		var a:Array = rl.get(filetype, ['', null])
+		var hbox_type_list:Array = []
+		var type_label:Label = Label.new()
+		type_label.name = a[0]
+		type_label.text = a[0]
+		type_label.label_settings = label_setting_font_60
+		var ext_dic:Dictionary = DIS_FILE_TYPE[filetype]
+		var idx = 0
+		for eacht in ext_dic:
+			if idx % file_type_line_max_cnt == 0:
+				hbox_type_list.append(HBoxContainer.new())
+			idx += 1
+			var r:CheckBox = CheckBox.new()
+			r.name = eacht
+			r.text = eacht
+			r.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+			r.connect("toggled", _on_file_type_cb_toggled.bind(filetype, r))
+			if ext_dic[eacht] == 'yes':
+				r.set_pressed_no_signal(true)
+			else:
+				r.set_pressed_no_signal(false)
+			hbox_type_list[hbox_type_list.size() - 1].add_child(r)
+			for eachtt in hbox_type_list:
+				vbox_this_type.add_child(eachtt)
+			if a[1] != null:
+				a[1].add_child(type_label)
+				a[1].add_child(vbox_this_type)
+	var add_type_input:LineEdit = LineEdit.new()
+	add_type_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	add_type_input.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	var add_type_bt:Button = Button.new()
+	add_type_bt.name = 'add_type_bt'
+	add_type_bt.text = '增加类型'
+	add_type_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	add_type_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	add_type_bt.connect("pressed", _on_add_type_bt_pressed.bind('add', add_type_input, hbox_setting_l6_3))
+	var del_type_bt:Button = Button.new()
+	del_type_bt.name = 'del_type_bt'
+	del_type_bt.text = '删除类型'
+	del_type_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	del_type_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	del_type_bt.connect("pressed", _on_add_type_bt_pressed.bind('del', add_type_input, hbox_setting_l6_3))
+	hbox_setting_l6_4.add_child(add_type_input)
+	hbox_setting_l6_4.add_child(add_type_bt)
+	hbox_setting_l6_4.add_child(del_type_bt)
+	
 	var iabout:Button = Button.new()
 	iabout.name = 'iabout'
 	iabout.text = '关于...'
 	iabout.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	iabout.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hbox_setting_l6.add_child(iabout)
+	hbox_setting_l7.add_child(iabout)
 	
 	var line2:Line2D = Line2D.new()
 	line2.name = 'line2'
@@ -553,12 +669,6 @@ func build_gui() -> void:
 	hbox_setting_le.add_child(line2)
 		
 	### L2
-	var opt_bt:OptionButton = OptionButton.new()
-	opt_bt.name = 'show_type'
-	opt_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
-	for eacht in DIS_FILE_TYPE:
-		opt_bt.add_item(eacht)
-	hbox_l2.add_child(opt_bt)
 	var input_txt:LineEdit = LineEdit.new()
 	input_txt.name = 'search_input'
 	input_txt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
@@ -662,7 +772,7 @@ func sort_files_by_method_duration(f_table:Dictionary) -> Dictionary:
 func update_and_show_files() -> void:
 	log_window.add_log('[connect_home]->update_and_show_files')
 	var taskid:String = generate_task_id()
-	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), SCAN_DIR_LIST)
+	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, DIS_FILE_TYPE)
 	var f_table:Dictionary = scan_files_obj.read_db().get('all_files_dic', {})
 	var file_dic:Dictionary = sort_files_by_method_duration(f_table)
 	var idx:int = 0
@@ -717,7 +827,7 @@ func _on_setting_bt_pressed() -> void:
 	vbox_l1_2_setting.visible = not vbox_l1_2_setting.visible
 	_force_win()
 
-func _on_save_cfg_bt_pressed(login_tiltle_label:Label, save_cfg_bt:Button, server_ip_input:LineEdit, 
+func _on_save_cfg_bt_pressed(_login_tiltle_label:Label, save_cfg_bt:Button, server_ip_input:LineEdit, 
 upload_port_input:LineEdit, download_port_input:LineEdit, usr_input:LineEdit, psd_input:LineEdit) -> void:
 	log_window.add_log('[connect_home]->_on_save_cfg_bt_pressed')
 	save_cfg_bt.text = '保存中... ...'
@@ -758,16 +868,16 @@ poolmax=10, loopmax=3):
 	return r
 
 func _on_setting_save_bt_pressed(setting_save_bt:Button) -> void:
-	log_window.add_log('[connect_home]->_on_setting_save_bt_pressed:%s, %s, %s, %s, %s'%[';'.join(SCAN_DIR_LIST), DIS_SIZE, '~'.join(DIS_DURATION),
+	log_window.add_log('[connect_home]->_on_setting_save_bt_pressed:%s, %s, %s, %s, %s'%[JSON.stringify(SCAN_DIR_DIC), DIS_SIZE, '~'.join(DIS_DURATION),
 	SORT_METHOD, UE_SAVE_TIME])
 	save_setting()	
 	setting_save_bt.add_theme_color_override('font_color', Color(0.0, 1.0, 0.0, 1.0))
 	
-func _on_dis_size_toggled(idx:int, a:CheckBox) -> void:
+func _on_dis_size_toggled(_idx:int, a:CheckBox) -> void:
 	log_window.add_log('[connect_home]->_on_dis_size_toggled')
 	DIS_SIZE = a.name
 
-func _on_time_duration_selectd(idx:int, y1:OptionButton, m1:OptionButton, d1:OptionButton, 
+func _on_time_duration_selectd(_idx:int, y1:OptionButton, m1:OptionButton, d1:OptionButton, 
 y2:OptionButton, m2:OptionButton, d2:OptionButton) -> void:
 	log_window.add_log("%s, %s, %s,   %s, %s, %s"%[y1.selected, m1.selected, d1.selected, y2.selected, 
 	m2.selected, d2.selected])
@@ -782,9 +892,18 @@ y2:OptionButton, m2:OptionButton, d2:OptionButton) -> void:
 	DIS_DURATION[1] = date_string_to_unix_timestamp(yy2, mm2, dd2)
 	print(DIS_DURATION)
 
-func _on_sort_method_toggled(idx:int, a:CheckBox) -> void:
+func _on_sort_method_toggled(_idx:int, a:CheckBox) -> void:
 	SORT_METHOD = a.name
 
+func _on_file_type_cb_toggled(idx:int, filetype:String, cb:CheckBox) -> void:
+	if cb.name not in DIS_FILE_TYPE.get(filetype, {}):
+		return
+	if idx == 0:
+		DIS_FILE_TYPE[filetype][cb.name] = 'no'
+	else:
+		DIS_FILE_TYPE[filetype][cb.name] = 'yes'
+	print(DIS_FILE_TYPE)
+	
 func _force_win() -> void:
 	hbox_l1.size = Vector2i(win_size.x, 40)
 	vbox_l1_1_login.size = Vector2i(win_size.x, 40)
@@ -792,21 +911,95 @@ func _force_win() -> void:
 	hbox_l2.size = Vector2i(win_size.x, 40)
 	vbox_l3.size = Vector2i(win_size.x, 40)
 
+### init -> pull_files_table -> scan_files -> deal_files -> update_and_show_files
 func _on_scan_bt_pressed() -> void:
 	log_window.add_log('[connect_home]->_on_scan_bt_pressed')
-	
+	current_state = 'init'
+	pre_current_state = 'init'
+	update_state()
 
+### upload_files -> push_files_table -> update_and_show_files
 func _on_upload_bt_pressed() -> void:
 	log_window.add_log('[connect_home]->_on_scan_bt_pressed')
+	if pre_current_state == 'upload_files':
+		update_state()
+	else:
+		log_window.add_log('[connect_home]->_on_scan_bt_pressed:please do the scan first')
 
+### query_files -> delete_files -> push_files_table -> update_and_show_files
+func _on_delete_bt_pressed() -> void:
+	log_window.add_log('[connect_home]->_on_delete_bt_pressed')
+	current_state = 'upload_files'
+	pre_current_state = 'query_files'
+	update_state()
+	
 func _on_scan_dir_cb_toggled(idx:int, cb:CheckBox) -> void:
 	log_window.add_log('[connect_home]->_on_on_scan_dir_cb_toggled:%s, %s'%[idx, cb.name])
-	print(SCAN_DIR_LIST.find(cb.name))
-	if idx == 0 and cb.name in SCAN_DIR_LIST:
-		SCAN_DIR_LIST.remove_at(SCAN_DIR_LIST.find(cb.name))
-	if idx == 1 and cb.name not in SCAN_DIR_LIST:
-		SCAN_DIR_LIST.append(cb.name)
-	
+	print(SCAN_DIR_DIC)
+	if cb.name not in SCAN_DIR_DIC:
+		return
+	if idx == 0:
+		SCAN_DIR_DIC[cb.name] = 'no'
+	else:
+		SCAN_DIR_DIC[cb.name] = 'yes'
+
+func _on_add_scan_dir_bt_pressed(opr:String, new_scan_dir_input:LineEdit, hbox_setting_l1_1:HBoxContainer) -> void:
+	if opr == 'add':
+		var cb_r:CheckBox = CheckBox.new()
+		cb_r.name = new_scan_dir_input.text
+		cb_r.text = new_scan_dir_input.text
+		cb_r.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cb_r.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+		cb_r.set_pressed_no_signal(true)
+		cb_r.connect("toggled", _on_scan_dir_cb_toggled.bind(cb_r))
+		SCAN_DIR_DIC[new_scan_dir_input.text] = 'yes'
+		hbox_setting_l1_1.add_child(cb_r)
+		new_scan_dir_input.text = ''
+	elif opr == 'del':
+		var delnode:CheckBox = null
+		for a in hbox_setting_l1_1.get_children():
+			if a.text == new_scan_dir_input.text:
+				delnode = a
+				break
+		if delnode != null:
+			hbox_setting_l1_1.remove_child(delnode)
+			SCAN_DIR_DIC[new_scan_dir_input.text] = 'del'
+		new_scan_dir_input.text = ''
+
+func _on_add_type_bt_pressed(opr:String, add_type_input:LineEdit, hbox_setting_l6_3:HBoxContainer) -> void:
+	var a:VBoxContainer = hbox_setting_l6_3.get_child(1)
+	if opr == 'add':
+		var cb_r:CheckBox = CheckBox.new()
+		cb_r.name = add_type_input.text
+		cb_r.text = add_type_input.text
+		cb_r.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cb_r.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+		cb_r.set_pressed_no_signal(true)
+		cb_r.connect("toggled", _on_scan_dir_cb_toggled.bind(cb_r))
+		DIS_FILE_TYPE['Others'][add_type_input.text] = 'yes'
+		var idx:int = int(DIS_FILE_TYPE.get('Others', {}).keys().find(add_type_input.text)/file_type_line_max_cnt)
+		var aa:HBoxContainer = null
+		if idx < a.get_children().size():
+			aa = a.get_child(idx)
+		else:
+			aa = HBoxContainer.new()
+			a.add_child(aa)
+		aa.add_child(cb_r)
+		add_type_input.text = ''
+	elif opr == 'del':
+		var delnode:CheckBox = null
+		var idx:int = int(DIS_FILE_TYPE.get('Others', {}).keys().find(add_type_input.text)/file_type_line_max_cnt)
+		var aa:HBoxContainer = a.get_child(idx)
+		if aa != null:
+			for b in aa.get_children():
+				if b.text == add_type_input.text:
+					delnode = b
+					break
+		if delnode != null:
+			aa.remove_child(delnode)
+			DIS_FILE_TYPE['Others'][add_type_input.text] = 'del'
+		add_type_input.text = ''
+		
 func date_string_to_unix_timestamp(y:String, m:String, d:String) -> int:
 	# 2. 构造初始日期字典
 	var date_dict = {
@@ -845,7 +1038,7 @@ func query_files() -> void:
 	
 func deal_files() -> void:
 	var taskid:String = generate_task_id()
-	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), SCAN_DIR_LIST)
+	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, DIS_FILE_TYPE)
 	var files_dic:Dictionary = scan_files_obj.read_db()
 	var all_files_dic:Dictionary = files_dic.get("all_files_dic", {})
 	for eachpath in all_files_dic:
@@ -894,6 +1087,8 @@ func upload_a_file(filepath) -> bool:
 	upload_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
 	upload_obj.connect("report_result", _on_class_report_result)
 	upload_obj.upload_a_file(filepath)
+	logs_dic.message = 'upload_a_file:%s'%[filepath]
+	update_log()
 	return true
 
 func pull_files_table() -> void:
@@ -914,7 +1109,7 @@ func push_files_table() -> void:
 
 func update_files_table_after_upload() -> void:
 	var taskid:String = generate_task_id()
-	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), SCAN_DIR_LIST)
+	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, DIS_FILE_TYPE)
 	var f_table:Dictionary = scan_files_obj.read_db().get('all_files_dic', {})
 	var d_table:Dictionary = scan_files_obj.read_db().get('rename_files_dic', {})
 	for eachfile in upload_dic:
@@ -926,7 +1121,7 @@ func update_files_table_after_upload() -> void:
 	
 func update_files_table_after_delete() -> void:
 	var taskid:String = generate_task_id()
-	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), SCAN_DIR_LIST)
+	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, DIS_FILE_TYPE)
 	var f_table:Dictionary = scan_files_obj.read_db().get('all_files_dic', {})
 	var d_table:Dictionary = scan_files_obj.read_db().get('rename_files_dic', {})
 	for eachfile in delete_dic:
@@ -939,7 +1134,7 @@ func update_files_table_after_delete() -> void:
 func scan_files() -> void:
 	log_window.add_log("[connect_home]->scan_files")
 	var taskid:String = generate_task_id()
-	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), SCAN_DIR_LIST)
+	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, DIS_FILE_TYPE)
 	scan_files_obj.connect("scan_finished", _on_class_report_result)
 	scan_files_obj.scan_a_dir(UE_ROOT_DIR)
 	
@@ -971,7 +1166,10 @@ func load_cfg():
 		log_window.add_log('load cfg failed2')
 
 func save_setting() -> void:
-	var setting_infor:String = "SCAN_DIR_LIST:%s\nDIS_SIZE:%s\nDIS_DURATION:%s\nSORT_METHOD:%s\nUE_SAVE_TIME:%s"%[';'.join(SCAN_DIR_LIST), DIS_SIZE, '~'.join(DIS_DURATION), SORT_METHOD, UE_SAVE_TIME]
+	var setting_infor:String = \
+	"UE_ROOT_DIR:%s\nSCAN_DIR_DIC:%s\nDIS_SIZE:%s\nDIS_DURATION:%s\nSORT_METHOD:%s\nUE_SAVE_TIME:%s\nDIS_FILE_TYPE:%s"\
+	%[UE_ROOT_DIR, JSON.stringify(SCAN_DIR_DIC), DIS_SIZE, '~'.join(DIS_DURATION), 
+	SORT_METHOD, UE_SAVE_TIME, JSON.stringify(DIS_FILE_TYPE)]
 	var dir:String = SETTING_PATH.get_base_dir()
 	if not DirAccess.dir_exists_absolute(dir):
 		DirAccess.make_dir_absolute(dir)
@@ -985,7 +1183,11 @@ func load_setting() -> void:
 	var f = FileAccess.open(SETTING_PATH, FileAccess.READ)
 	if f:
 		var cfg_infor = f.get_line()
-		SCAN_DIR_LIST = cfg_infor.replace('SCAN_DIR_LIST:', '').split(';')
+		UE_ROOT_DIR = cfg_infor.replace('UE_ROOT_DIR:', '')
+		if debug_on_win:
+			UE_ROOT_DIR = r'E:\pythonProject\2'
+		cfg_infor = f.get_line()
+		SCAN_DIR_DIC = JSON.parse_string(cfg_infor.replace('SCAN_DIR_DIC:', ''))
 		cfg_infor = f.get_line()
 		DIS_SIZE = cfg_infor.replace('DIS_SIZE:', '')
 		cfg_infor = f.get_line()
@@ -996,6 +1198,8 @@ func load_setting() -> void:
 		SORT_METHOD = cfg_infor.replace('SORT_METHOD:', '')
 		cfg_infor = f.get_line()
 		UE_SAVE_TIME = cfg_infor.replace('UE_SAVE_TIME:', '').to_int()
+		cfg_infor = f.get_line()
+		DIS_FILE_TYPE = JSON.parse_string(cfg_infor.replace('DIS_FILE_TYPE:', ''))
 	else:
 		log_window.add_log('load cfg failed2')
 func generate_task_id() -> String:
@@ -1017,43 +1221,65 @@ func update_state() -> void:
 		current_state = next_state
 		var next_func = states.get(next_state, {}).get('func', null)
 		if next_func != null:
+			logs_dic.pre_current_status = pre_current_state
+			logs_dic.current_status = current_state
 			next_func.call()
 
+func update_log() -> void:
+	logs_show.call_deferred('set', 'text', "%s, %s, %s, %s, %s" % \
+	[logs_dic.pre_current_status, logs_dic.current_status, logs_dic.res1, logs_dic.res2,
+	logs_dic.message])
+
+func pre_update_state() -> void:
+	var next_state = states.get(current_state, {}).get('next_state', '')
+	if next_state != '':
+		log_window.add_log("[connect_home]->pre_update_state:%s>%s"%[current_state, next_state])
+		pre_current_state = next_state
+		logs_dic.pre_current_status = pre_current_state
+		logs_dic.current_status = current_state
+		update_log()
+		
 func _on_class_report_result(who_i_am:String, taskid:String, req_type:String, infor:String, result:String) -> void:
 	log_window.add_log("[connect_home]->_on_class_report_result:%s-%s %s %s %s"%[who_i_am, taskid, req_type, infor, result])
+	## 1 ### init -> pull_files_table -> scan_files -> deal_files -> update_and_show_files
+	## 2 ###         upload_files -> push_files_table -> update_and_show_files
+	## 3 ###         query_files -> delete_files -> push_files_table -> update_and_show_files
 	if who_i_am == 'tcp_transf_class':
-		if current_state == 'pull_files_table':## pull finish
+		if current_state == 'pull_files_table':## pull finish                                       ## 1.1
 			if req_type == 'download' and taskid == pull_obj.taskid:# and result == 'FINISH':
 				update_state()
 		elif current_state == 'upload_files':## upload one file finish
-			if req_type == 'upload' and taskid == upload_obj.taskid:# and result == 'FINISH':
+			if req_type == 'upload' and taskid == upload_obj.taskid:# and result == 'FINISH':       ## 2.1
+				log_window.add_log("[connect_home]_on_class_report_result:upload file:%s, result:%s"%[infor, result])
 				if result == 'FINISH':
 					upload_dic[infor] = 'uploaded'
 				upload_finish = true
-		elif current_state == 'query_files':# query finish
+		elif current_state == 'query_files':# query finish                                          ## 3.1
 			if req_type == 'query' and taskid == query_obj.taskid:
 				query_rt = result
 				update_state()
-		elif current_state == 'push_files_table':# push finish
+		elif current_state == 'push_files_table':# push finish                                      ## !2.3  !3.3
 			if req_type == 'upload' and taskid == push_obj.taskid:
-				update_state()
+				pre_update_state()
+				update_and_show_files()
 				
-	elif who_i_am == 'scan_class':
+	elif who_i_am == 'scan_class':###                                                               ## 1.2
 		if current_state == 'scan_files':# scan finish
 			if taskid == scan_files_obj.taskid and result == 'FINISH':
 				update_state()
 				
 	elif who_i_am == 'connect_home':
-		if current_state == 'deal_files':# deal files finish
+		if current_state == 'deal_files':# deal files finish                                        ## !1.3
 			if req_type == 'deal_files' and result == 'FINISH':
-				pass
-				#update_state()
-		elif current_state == 'upload_files':# upload all files finish
+				pre_update_state()
+				update_and_show_files()
+		elif current_state == 'upload_files':# upload all files finish                              ## 2.2
 			if req_type == 'upload_files' and result == 'FINISH':
+				current_state = 'delete_files'## force to delete_files
 				update_state()
-		elif current_state == 'delete_files':# delete files finish
+		elif current_state == 'delete_files':# delete files finish                                  ## 3.2
 			if req_type == 'delete_files' and result == 'FINISH':
-				update_state()
+				pre_update_state()
 		
 	
 	

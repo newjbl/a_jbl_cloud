@@ -5,24 +5,27 @@ var db_path:String = "res://db/files.txt"
 var icon_dir:String = "res://db/icon/"
 var ignore_file_list:Array = ['files.txt']
 var ignore_ext_list:Array = ['dtmp']
+var scan_ext_list:Array = []
 var scan_dir_list:Array = []
 var scan_thread:Thread = null
 var scan_thread_running:bool = false
 var taskid:String = ''
 var new_files_dic:Dictionary = {}
 var log_window = null
-var scan_path_dic:Dictionary = {
-	'DCIM': '/storage/emulated/0/DCIM',
-	'Pictures': '/storage/emulated/0/Pictures',
-	'download': '/storage/emulated/0/Download',
-}
+
 signal scan_finished(who_i_am:String, taskid:String, req_type:String, infor:String, result:String)
 
-func _init(log_win, _taskid:String, db:String, dirlist:Array) -> void:
+func _init(log_win, _taskid:String, db:String, ue_root_dir:String, dirdic:Dictionary, dis_files_type:Dictionary) -> void:
 	log_window = log_win
 	taskid = _taskid
 	db_path = db
-	scan_dir_list = dirlist
+	for eachdir in dirdic:
+		if dirdic[eachdir] == 'yes':
+			scan_dir_list.append(ue_root_dir.path_join(eachdir))
+	for k in dis_files_type:
+		for kk in dis_files_type[k]:
+			scan_ext_list.append(kk.touper())
+	print(scan_ext_list)
 	scan_finished.connect(_on_scan_status_changed)
 	_init_db()
 	
@@ -72,6 +75,7 @@ func merger_table() -> void:
 	write_db({"all_files_dic": server_files_dic, "rename_files_dic": rename_files_dic})
 	
 func get_all_files(scaned_path:String) -> void:
+	log_window.add_log('[scan_class]->get_all_files:will scan:%s'%[scaned_path])
 	var dir:DirAccess = DirAccess.open(scaned_path)
 	if dir == null:
 		log_window.add_log("open dir failed:", scaned_path, " reason:", DirAccess.get_open_error())
@@ -81,18 +85,16 @@ func get_all_files(scaned_path:String) -> void:
 	while current_name != "":
 		var current_path:String = scaned_path.path_join(current_name)
 		if dir.current_is_dir():
-			var tmp:Array = dir.split('/')
-			if tmp[tmp.size() - 1] not in scan_dir_list:
-				continue
-			get_all_files(current_path + '/')
+			if is_a_subdir_for_blist(current_path, scan_dir_list):
+				get_all_files(current_path)
 		else:
 			if current_name in ignore_file_list:
 				log_window.add_log("[scan_class]->get_all_files:ignore file:%s"%[current_name])
 				current_name = dir.get_next()
 				continue
-			var filetype = current_path.get_extension()
-			if filetype in ignore_ext_list:
-				log_window.add_log("[scan_class]->get_all_files:ignore ext file:%s"%[current_name])
+			var filetype = current_path.get_extension().to_upper()
+			if filetype not in scan_ext_list:
+				#log_window.add_log("[scan_class]->get_all_files:ignore ext file:%s"%[current_name])
 				current_name = dir.get_next()
 				continue
 			var md5:String = FileAccess.get_md5(current_path)
@@ -104,6 +106,20 @@ func get_all_files(scaned_path:String) -> void:
 				'on_ue': 'yes', 'res1':'', 'res2':'', 'res3':''}
 		current_name = dir.get_next()
 	dir.list_dir_end()
+	log_window.add_log('[scan_class]->get_all_files:scan finish:%s'%[scaned_path])
+
+func is_a_subdir_for_b(a:String, b:String) -> bool:
+	var na = a.simplify_path().to_upper()
+	var nb = b.simplify_path().to_upper()
+	if na == nb:
+		return true
+	return na.begins_with(nb)
+
+func is_a_subdir_for_blist(a:String, blist:Array) -> bool:
+	for eachb in blist:
+		if is_a_subdir_for_b(a, eachb):
+			return true
+	return false
 	
 func _init_db() -> bool:
 	if not FileAccess.file_exists(db_path):

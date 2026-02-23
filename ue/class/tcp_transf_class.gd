@@ -417,7 +417,7 @@ func write_a_file_thread(filepath, file_size, md5, offset):
 		if dl_buffer.size() > 0:
 			data_block = dl_buffer.pop_front()
 		dl_mute.unlock()
-		if data_block:
+		if data_block and f:
 			var r:Dictionary = write_a_data_block(f, data_block, idx)
 			if r['s'] == 0 and r['d'] in [4, 5, 6, 7]:
 				need_retry = true
@@ -436,8 +436,8 @@ func write_a_file_thread(filepath, file_size, md5, offset):
 	var md5_check = FileAccess.get_md5(dl_tmpfilepath)
 	if overwrite == 'yes' or md5 == md5_check:
 		DirAccess.rename_absolute(dl_tmpfilepath, filepath)
-		emit_signal("report_result", "tcp_transf_class", taskid, 'download', download_file, 'FINISH')
 		log_window.add_log('[tcp_transf_class]->write_a_file_thread:download finish!!')
+		emit_signal("report_result", "tcp_transf_class", taskid, 'download', download_file, 'FINISH')
 	else:
 		need_retry = true
 	if need_retry:
