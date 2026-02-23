@@ -14,7 +14,7 @@ TEMP_FILE_SUFFIX = ".jpart"
 MAX_CONNECTIONS = 10
 
 UE_UPLOAD_PORT = 6666
-UE_UPLOAD_BLOCK_SIZE = 4096
+UE_UPLOAD_BLOCK_SIZE = 1024
 UE_TIMEOUT = 60
 UE_DOWNLOAD_PORT = 7777
 ERROR_CODE_DIC = {
@@ -117,8 +117,8 @@ def handle_ue_upload(upload_socket:socket.socket, client_addr:tuple):
                 break
             vidx = data_head.find(b'|GD>SV|RQ:')
             vidy = data_head.find(b'|GD>SV|DO:')
-            print("[%s]ue(%s) upload receive data:"%(datetime.now(), client_addr), data_head)
-            print('current LOGIN_DIC is :', LOGIN_DIC)
+            #print("[%s]ue(%s) upload receive data:"%(datetime.now(), client_addr), data_head)
+            #print('current LOGIN_DIC is :', LOGIN_DIC)
             if vidx >= 0:
                 handle_ue_upload_req(upload_socket, client_addr, upload_text)
             elif vidy >= 0:

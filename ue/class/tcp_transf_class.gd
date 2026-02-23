@@ -12,6 +12,7 @@ var upload_thread:Thread = null
 var upload_running:bool = false
 var download_thread:Thread = null
 var download_running:bool = false
+var if_download_sys:bool = false
 var write_thread:Thread = null
 var write_running:bool = false
 
@@ -22,9 +23,10 @@ var req_login_ack:Dictionary = {}
 var tmp_format:String = '.dtmp'
 var dl_tmpfilepath:String = ''
 var dl_buffer:Array = []
+var dl_l2_buffer:Array = []
 var dl_mute:Mutex = Mutex.new()
 var crc32_class:CRC32_C = CRC32_C.new()
-var UPLOAD_BUF_SIZE:int = 4096
+var UPLOAD_BUF_SIZE:int = 1024
 
 var usr:String = ''
 var psd:String = ''
@@ -60,6 +62,7 @@ func connect_to_server(poolmax=10) -> void:
 	req_download_ack = {}
 	upload_running = false
 	download_running = false
+	if_download_sys = false
 	dl_tmpfilepath = r''
 	dl_buffer = []
 	rec_data_running = true
@@ -125,6 +128,7 @@ func disconnect_to_server() -> void:
 	log_window.add_log("[tcp_transf_class]->disconnect_to_server.")
 	rec_data_running = false
 	download_running = false
+	if_download_sys = false
 	rec_data_running = false
 	write_running = false
 	req_upload_ack = {}
@@ -285,18 +289,41 @@ func download_a_file_thread(filepath, file_size, md5, offset) -> void:
 func receiving_data_thread():
 	while rec_data_running:
 		if _socket and _socket.get_status() == StreamPeerTCP.STATUS_CONNECTED:
-			var rec_len = _socket.get_available_bytes()
+			var rec_len = UPLOAD_BUF_SIZE + 28
+			if not if_download_sys:
+				rec_len = _socket.get_available_bytes()
 			if rec_len > 0:
 				var data = _socket.get_data(rec_len)
 				if data[0] == Error.OK:
 					if data[1].size() > 0:
-						var hd:Array = received_get_header(data[1])
-						received_and_deal_data(hd[0], hd[1])
+						print('if_download_sys:%s'%[if_download_sys])
+						if not if_download_sys:
+							var hd:Array = received_get_header(data[1])
+							var header:String = hd[0]
+							var payload:PackedByteArray = hd[1]
+							if header == '|SV>GD|DO:':
+								print('if_download_sys=false, payload size:%s'%[payload.size()])
+								var idx:int = 0
+								while payload.size() > UPLOAD_BUF_SIZE + 18:
+									dl_buffer.append(payload.slice(idx, UPLOAD_BUF_SIZE + 18))
+									payload = payload.slice(UPLOAD_BUF_SIZE + 28, UPLOAD_BUF_SIZE + 18)
+								var this_len:int = payload.slice(0, 4).get_string_from_utf8().hex_to_int()
+								var need_len:int = this_len + 4 - payload.size()
+								if need_len > 0:
+									var need_payload:PackedByteArray = _socket.get_data(need_len)
+									payload = payload + need_payload
+								dl_buffer.append(payload)
+								if_download_sys = true
+							else:
+								received_and_deal_data(header, payload)
+						else:
+							print('if_download_sys=true, payload size:%s'%[data[1].slice(10).size()])
+							received_and_deal_data('|SV>GD|DO:', data[1].slice(10))
 					else:
 						log_window.add_log('[tcp_transf_class]->receiving_data_thread:data[1].size() <= 0')
 				else:
 					log_window.add_log('[tcp_transf_class]->receiving_data_thread:get data error')
-						
+
 func received_and_deal_data(header:String, data:PackedByteArray) -> void:
 	if header == '|SV>GD|RQ:':
 		var r:Dictionary = receive_parser_req_data(header + data.get_string_from_utf8())
@@ -373,7 +400,10 @@ func write_a_data_block(f:FileAccess, data_block:PackedByteArray, preidx:int) ->
 		log_window.add_log("write_a_data_block: data_size_int <= 18")
 		return {'s':0, 'd':2, 'idx':preidx}
 	if len(data_block) != data_size_int + 4:
-		log_window.add_log("write_a_data_block: data_size_int too short")
+		log_window.add_log("write_a_data_block: data_size_int too short:%s != %s + 4"%[data_block.size(), data_size_int])
+		var aa = data_block.get_string_from_utf8()
+		var bb = aa.substr(1024, 100)
+		print(aa)
 		return {'s':0, 'd':3, 'idx':preidx}
 	var crc:String = data_block.slice(data_size_int - 8 + 4, data_size_int + 4).get_string_from_utf8()
 	if not crc.is_valid_hex_number():
@@ -429,9 +459,12 @@ func write_a_file_thread(filepath, file_size, md5, offset):
 				#download_running = false
 			if current_size >= file_size:
 				download_running = false
+				if_download_sys = false
+				log_window.add_log('[tcp_transf_class]->write_a_file_thread:stop download due to current_size >= file_size!')
 		else:
 			if current_size >= file_size:
 				download_running = false
+				if_download_sys = false
 	f.close()
 	var md5_check = FileAccess.get_md5(dl_tmpfilepath)
 	if overwrite == 'yes' or md5 == md5_check:

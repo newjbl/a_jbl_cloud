@@ -191,8 +191,8 @@ func build_gui() -> void:
 	hbox_l1.add_child(upload_bt)
 	
 	delete_bt = Button.new()
-	delete_bt.text = '2. 删除文件'
-	delete_bt.name = 'upload_bt'
+	delete_bt.text = '3. 删除文件'
+	delete_bt.name = 'delete_bt'
 	delete_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	delete_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
 	delete_bt.connect("pressed", _on_delete_bt_pressed)
@@ -383,12 +383,14 @@ func build_gui() -> void:
 	
 	var ue_root_dir_label:Label = Label.new()
 	ue_root_dir_label.name = 'ue_root_dir_label'
+	ue_root_dir_label.text = '根目录'
 	ue_root_dir_label.label_settings = label_setting_font_60
 	hbox_setting_l1_0.add_child(ue_root_dir_label)
 	var ue_root_dir_input:LineEdit = LineEdit.new()
 	ue_root_dir_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ue_root_dir_input.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
 	ue_root_dir_input.text = UE_ROOT_DIR
+	ue_root_dir_input.connect("text_changed", _on_ue_root_dir_changed)
 	hbox_setting_l1_0.add_child(ue_root_dir_input)
 	
 	var scan_dir_label:Label = Label.new()
@@ -404,9 +406,9 @@ func build_gui() -> void:
 		cb_r.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
 		if SCAN_DIR_DIC[eachdir] == 'yes':
 			cb_r.set_pressed_no_signal(true)
-		else:
+		elif SCAN_DIR_DIC[eachdir] == 'no':
 			cb_r.set_pressed_no_signal(false)
-		cb_r.connect("toggled", _on_scan_dir_cb_toggled)
+		cb_r.connect("toggled", _on_scan_dir_cb_toggled.bind(cb_r))
 		hbox_setting_l1_1.add_child(cb_r)
 	var new_scan_dir_input:LineEdit = LineEdit.new()
 	new_scan_dir_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -515,7 +517,7 @@ func build_gui() -> void:
 	d2.connect("item_selected", _on_time_duration_selectd.bind(y1, m1, d1, y2, m2, d2))
 	var time_dict_1:Dictionary = Time.get_datetime_dict_from_unix_time(DIS_DURATION[0])
 	var time_dict_2:Dictionary = Time.get_datetime_dict_from_unix_time(DIS_DURATION[1])
-	if time_dict_1.year >= TIME_ITEM[0] or time_dict_1.year <= TIME_ITEM[TIME_ITEM.size() - 1]:
+	if time_dict_1.year >= TIME_ITEM[0] and time_dict_1.year <= TIME_ITEM[TIME_ITEM.size() - 1]:
 		y1.select(time_dict_1.year - TIME_ITEM[0])
 		m1.select(time_dict_1.month - 1)
 		d1.select(time_dict_1.day -1)
@@ -601,12 +603,13 @@ func build_gui() -> void:
 	ue_save_duration_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ue_save_duration_input.text = "%s"%UE_SAVE_TIME
 	ue_save_duration_input.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	ue_save_duration_input.connect("text_changed", _on_ue_save_time_changed)
 	hbox_setting_l5.add_child(ue_save_duration_input)
 	
 	var rl:Dictionary = {'Picture': ['图片类型', hbox_setting_l6],
 	'Vedio': ['视频类型', hbox_setting_l6_1], 
 	'Music': ['音频类型', hbox_setting_l6_2], 
-	'Othres': ['其他类型', hbox_setting_l6_3], }
+	'Others': ['其他类型', hbox_setting_l6_3], }
 	for filetype in DIS_FILE_TYPE:
 		var vbox_this_type:VBoxContainer = VBoxContainer.new()
 		var a:Array = rl.get(filetype, ['', null])
@@ -631,11 +634,11 @@ func build_gui() -> void:
 			else:
 				r.set_pressed_no_signal(false)
 			hbox_type_list[hbox_type_list.size() - 1].add_child(r)
-			for eachtt in hbox_type_list:
-				vbox_this_type.add_child(eachtt)
-			if a[1] != null:
-				a[1].add_child(type_label)
-				a[1].add_child(vbox_this_type)
+		for eachtt in hbox_type_list:
+			vbox_this_type.add_child(eachtt)
+		if a[1] != null:
+			a[1].add_child(type_label)
+			a[1].add_child(vbox_this_type)
 	var add_type_input:LineEdit = LineEdit.new()
 	add_type_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	add_type_input.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
@@ -920,7 +923,7 @@ func _on_scan_bt_pressed() -> void:
 
 ### upload_files -> push_files_table -> update_and_show_files
 func _on_upload_bt_pressed() -> void:
-	log_window.add_log('[connect_home]->_on_scan_bt_pressed')
+	log_window.add_log('[connect_home]->_on_upload_bt_pressed:%s, %s'%[pre_current_state, current_state])
 	if pre_current_state == 'upload_files':
 		update_state()
 	else:
@@ -940,7 +943,7 @@ func _on_scan_dir_cb_toggled(idx:int, cb:CheckBox) -> void:
 		return
 	if idx == 0:
 		SCAN_DIR_DIC[cb.name] = 'no'
-	else:
+	elif idx == 1:
 		SCAN_DIR_DIC[cb.name] = 'yes'
 
 func _on_add_scan_dir_bt_pressed(opr:String, new_scan_dir_input:LineEdit, hbox_setting_l1_1:HBoxContainer) -> void:
@@ -999,7 +1002,15 @@ func _on_add_type_bt_pressed(opr:String, add_type_input:LineEdit, hbox_setting_l
 			aa.remove_child(delnode)
 			DIS_FILE_TYPE['Others'][add_type_input.text] = 'del'
 		add_type_input.text = ''
-		
+
+func _on_ue_root_dir_changed(t:String) -> void:
+	UE_ROOT_DIR = t
+	print(UE_ROOT_DIR)
+
+func _on_ue_save_time_changed(t:String) -> void:
+	UE_SAVE_TIME = t.to_int()
+	print(UE_SAVE_TIME)
+	
 func date_string_to_unix_timestamp(y:String, m:String, d:String) -> int:
 	# 2. 构造初始日期字典
 	var date_dict = {
@@ -1184,7 +1195,7 @@ func load_setting() -> void:
 	if f:
 		var cfg_infor = f.get_line()
 		UE_ROOT_DIR = cfg_infor.replace('UE_ROOT_DIR:', '')
-		if debug_on_win:
+		if debug_on_win and '/storage/emulated/' in UE_ROOT_DIR:
 			UE_ROOT_DIR = r'E:\pythonProject\2'
 		cfg_infor = f.get_line()
 		SCAN_DIR_DIC = JSON.parse_string(cfg_infor.replace('SCAN_DIR_DIC:', ''))
@@ -1250,7 +1261,7 @@ func _on_class_report_result(who_i_am:String, taskid:String, req_type:String, in
 				update_state()
 		elif current_state == 'upload_files':## upload one file finish
 			if req_type == 'upload' and taskid == upload_obj.taskid:# and result == 'FINISH':       ## 2.1
-				log_window.add_log("[connect_home]_on_class_report_result:upload file:%s, result:%s"%[infor, result])
+				log_window.add_log("[connect_home]->_on_class_report_result:upload file:%s, result:%s"%[infor, result])
 				if result == 'FINISH':
 					upload_dic[infor] = 'uploaded'
 				upload_finish = true

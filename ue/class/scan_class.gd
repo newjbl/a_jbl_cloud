@@ -24,7 +24,7 @@ func _init(log_win, _taskid:String, db:String, ue_root_dir:String, dirdic:Dictio
 			scan_dir_list.append(ue_root_dir.path_join(eachdir))
 	for k in dis_files_type:
 		for kk in dis_files_type[k]:
-			scan_ext_list.append(kk.touper())
+			scan_ext_list.append(kk.to_upper())
 	print(scan_ext_list)
 	scan_finished.connect(_on_scan_status_changed)
 	_init_db()
