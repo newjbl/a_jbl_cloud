@@ -298,7 +298,7 @@ func download_report_result(rt:String) -> void:
 	download_running = false
 	if_download_sys = false
 	log_window.add_log('[tcp_transf_class]->download_report_result:download %s!!'%rt)
-	emit_signal('report_result', 'tcp_transf_calss', taskid, 'download', download_file_dic.get('filepath', ''), rt)
+	emit_signal('report_result', 'tcp_transf_class', taskid, 'download', download_file_dic.get('filepath', ''), rt)
 	
 #####################  receive data #########################
 func receiving_data_thread():
@@ -339,9 +339,9 @@ func receiving_do_data() -> void:
 		var data = _socket.get_data(rec_len)
 		if data[0] == Error.OK:
 			if data[1].size() > 0:
-				if idx < 10:
-					print('------------------ 2 ----------------- %s'%[rec_len])
-					print('receiving_data_thread:%s'%[data[1].get_string_from_utf8()])
+				#if idx < 10:
+				#	print('------------------ 2 ----------------- %s'%[rec_len])
+				#	print('receiving_data_thread:%s'%[data[1].get_string_from_utf8()])
 				idx += 1
 				dl_mute.lock()
 				dl_buffer.append(data[1].slice(10))
@@ -485,7 +485,7 @@ func write_a_data_block(f:FileAccess, data_block:PackedByteArray, preidx:int) ->
 		log_window.add_log("write_a_data_block: crc check error")
 		return {'s':0, 'd':7, 'idx':preidx}
 	if idxint % 100 == 0:
-		log_window.add_log('[tcp_transf_class]->write_a_data_block:idx process:%s'%crc_int)
+		log_window.add_log('[tcp_transf_class]->write_a_data_block:idx process:%s'%idxint)
 	if f:
 		f.seek_end()
 	var _r = f.store_buffer(data_payload)
