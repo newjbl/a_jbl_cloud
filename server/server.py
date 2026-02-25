@@ -347,15 +347,13 @@ def handle_ue_download_req(download_socket:socket.socket, client_addr:tuple, dow
 def handle_ue_download_details(download_socket:socket.socket, client_addr:tuple, meta_json, download_text):
     req_type = meta_json.get("req_type", "")
     filepath = meta_json.get("filepath", "")
-    file_size = meta_json.get("file_size", 0)
-    file_md5 = meta_json.get("file_md5", "")
-    offset = meta_json.get("offset", 0)
+    offset = int(meta_json.get("offset", -1))
     status = meta_json.get("status", "")
-    if not (status and offset >= 0 and req_type and filepath and file_md5 and file_size > 0):
+    if not (status and req_type and filepath):
         print("[%s]ue(%s) request download parameters missing"%(datetime.now(), client_addr))
         send_stander_ack(download_socket, "|SV>GD|RQ:", 'download', "ERROR1", ERROR_CODE_DIC["ERROR1"], 0)
         return False
-    print("[%s]ue(%s) request download parameters OK:%s, %s, %s"%(datetime.now(), client_addr, filepath, file_size, file_md5))
+    print("[%s]ue(%s) request download parameters OK:%s"%(datetime.now(), client_addr, filepath))
     usr_dir = LOGIN_DIC.get(client_addr, {}).get("usr_dir", "")
     if not usr_dir:
         print("[%s]ue(%s) request download usr dir missing"%(datetime.now(), client_addr))
@@ -363,15 +361,21 @@ def handle_ue_download_details(download_socket:socket.socket, client_addr:tuple,
         return False
     fin_file_path = os.path.join(usr_dir, filepath)
     if status == "OK":
-        threading.Thread(target=handle_ue_download_do, args=(download_socket, fin_file_path, meta_json, download_text)).start()
-        return True
+        if offset >= 0:
+            time.sleep(0.5)
+            print("[%s]ue(%s) request download, server will send data... ..." % (datetime.now(), client_addr))
+            threading.Thread(target=handle_ue_download_do, args=(download_socket, fin_file_path, meta_json, download_text)).start()
+            return True
+        else:
+            print("[%s]ue(%s) request download offset < 0" % (datetime.now(), client_addr))
+            send_stander_ack(download_socket, "|SV>GD|RQ:", 'download', "ERROR1", ERROR_CODE_DIC["ERROR1"], 0)
+            return False
     if not os.path.isfile(fin_file_path):
         send_stander_ack(download_socket, "|SV>GD|RQ:", 'download', "ERROR7", ERROR_CODE_DIC["ERROR7"], offset)
         return False
     md5_check = caculate_md5(fin_file_path)
-    if file_md5 != 'ignore' and md5_check != file_md5:
-        send_stander_ack(download_socket, "|SV>GD|RQ:", 'download', "ERROR4", ERROR_CODE_DIC["ERROR4"], offset)
-    send_stander_ack(download_socket, "|SV>GD|RQ:", 'download', 'OK', '', offset)
+    sv_file_size = os.stat(fin_file_path).st_size
+    send_stander_ack(download_socket, "|SV>GD|RQ:", 'download', 'OK', '%s;%s'%(sv_file_size, md5_check), offset)
     return True
 
 def handle_ue_download_do(download_socket:socket.socket, fin_file_path, meta_json, download_text):
@@ -384,10 +388,12 @@ def handle_ue_download_do(download_socket:socket.socket, fin_file_path, meta_jso
         while True:
             data = f.read(UE_UPLOAD_BLOCK_SIZE)
             if not data:
+                print("[%s]start handle ue download finish(data.size=0):%s" % (datetime.now(), fin_file_path))
                 break
             send_data_block(download_socket, idx, data)
             idx += 1
-            if offset >= file_size:
+            if offset * UE_UPLOAD_BLOCK_SIZE >= file_size:
+                print("[%s]start handle ue download finish(size>=file_size):%s" % (datetime.now(), fin_file_path))
                 break
 
 def start_godot_upload_server():

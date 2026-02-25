@@ -1108,7 +1108,7 @@ func pull_files_table() -> void:
 	pull_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'yes')
 	pull_obj.connect("report_result", _on_class_report_result)
 	var pull_file = UE_ROOT_DIR.path_join('files.txt')
-	pull_obj.download_a_file(pull_file, 1, 'ignore')
+	pull_obj.download_a_file(pull_file)
 
 func push_files_table() -> void:
 	log_window.add_log("[connect_home]->push_files_table")

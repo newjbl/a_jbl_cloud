@@ -14,7 +14,6 @@ var download_thread:Thread = null
 var download_running:bool = false
 var if_download_sys:bool = false
 var write_thread:Thread = null
-var write_running:bool = false
 
 var req_upload_ack:Dictionary = {}
 var req_download_ack:Dictionary = {}
@@ -37,7 +36,7 @@ signal report_result(who_i_am:String, taskid:String, req_type:String, infor:Stri
 
 var root_dir:String = ''
 var upload_file:String = r''
-var download_file:String = r''
+var download_file_dic:Dictionary = {}
 var log_window = null
 var error_cnt = 0
 
@@ -129,8 +128,6 @@ func disconnect_to_server() -> void:
 	rec_data_running = false
 	download_running = false
 	if_download_sys = false
-	rec_data_running = false
-	write_running = false
 	req_upload_ack = {}
 	req_download_ack = {}
 	upload_running = false
@@ -206,7 +203,7 @@ func upload_data(filepath, offset) -> void:
 		request_a_message({'req_type':'upload', 'status':'FINISH'})
 
 ######################### download #########################
-func download_a_file(filepath:String, file_size:int, md5:String) -> void:
+func download_a_file(filepath:String) -> void:
 	log_window.add_log("[tcp_transf_class]->download_a_file:%s"%[filepath])
 	if FileAccess.file_exists(filepath) and overwrite == 'no':
 		log_window.add_log("[tcp_transf_class]->download_a_file: file not exist!")
@@ -217,51 +214,16 @@ func download_a_file(filepath:String, file_size:int, md5:String) -> void:
 		log_window.add_log('login failed!')
 		disconnect_to_server()
 		return
-	download_file = filepath
-	var dl_dir = DirAccess.open(root_dir)
-	if not dl_dir:
-		DirAccess.make_dir_absolute(root_dir)
-	var filename:String = filepath.get_file()
-	var filedir:String = filepath.get_base_dir()
-	dl_tmpfilepath = filedir.path_join("%s_%s_%s"%[md5, filename, tmp_format])
-	var offset = 0
-	if FileAccess.file_exists(filepath):
-		if overwrite == 'yes':
-			var err = DirAccess.remove_absolute(filepath)
-			if err != Error.OK:
-				log_window.add_log('[tcp_transf_class]->download_a_file:remove file failed in download overwrite mode')
-				return
-		else:
-			var md5_check:String = FileAccess.get_md5(filepath)
-			if md5_check == md5:
-				log_window.add_log('[tcp_transf_class]->download_a_file:already have this file')
-				return
-			else:
-				var err = DirAccess.remove_absolute(filepath)
-				if err != Error.OK:
-					log_window.add_log('[tcp_transf_class]->download_a_file:remove error md5 file failed in download')
-					return
-	if FileAccess.file_exists(dl_tmpfilepath):
-		if overwrite == 'yes':
-			var err = DirAccess.remove_absolute(dl_tmpfilepath)
-			if err != Error.OK:
-				log_window.add_log('[tcp_transf_class]->download_a_file:remove tmp file failed in download overwrite mode')
-				return
-		else:
-			offset = FileAccess.get_size(dl_tmpfilepath)
 	download_running = true
-	write_running = true
 	download_thread = Thread.new()
-	download_thread.start(download_a_file_thread.bind(filepath,file_size, md5, offset))
-	write_thread = Thread.new()
-	write_thread.start(write_a_file_thread.bind(filepath, file_size, md5, offset))
+	download_thread.start(download_a_file_thread.bind(filepath))
 
-func download_a_file_thread(filepath, file_size, md5, offset) -> void:
+func download_a_file_thread(filepath) -> void:
 	log_window.add_log("[tcp_transf_class]->download_a_file_thread:%s"%[filepath])
 	var stime = Time.get_ticks_msec()
 	var loop_cnt = 0
 	while download_running and loop_cnt <= 3:
-		request_download(filepath, file_size, md5, offset)
+		request_download(filepath)
 		while req_download_ack.size() == 0:
 			var ctime = Time.get_ticks_msec()
 			if ctime - stime > 3 * 1000:
@@ -271,59 +233,123 @@ func download_a_file_thread(filepath, file_size, md5, offset) -> void:
 			break
 	var rt_status = req_download_ack.get('status', '')
 	if rt_status == 'OK':
-		download_running = true
-		request_a_message(
-			{'req_type': 'download',
-			'status': 'OK', 
-			'file_size' :file_size,
-			'filepath': filepath.replace(root_dir + '/', ''),
-			'file_md5': md5,
-			'offset': offset,
+		var msg:Array = req_download_ack.get('message', '0;0').split(';')
+		var sv_file_size:int = msg[0].to_int()
+		var download_file_md5:String = msg[1]
+		var r:Array = download_file_prepare_name(filepath, download_file_md5)
+		if r[0]:
+			download_file_dic['filepath'] = filepath
+			download_file_dic['file_size'] = sv_file_size
+			download_file_dic['md5'] = download_file_md5
+			download_file_dic['offset'] = r[2]
+			request_a_message({
+				'req_type': 'download',
+				'status': 'OK',
+				'file_size': sv_file_size,
+				'filepath': filepath.replace(root_dir + '/', ''),
+				'file_md5': download_file_md5,
+				'offset': r[2],
 			})
+			download_running = true
+		elif r[1]:
+			download_report_result('FINISH')
+		else:
+			download_report_result('FAILED')
 	else:
 		log_window.add_log('download failed:%s'%[req_download_ack.get('message', 'unknown error')])
 		disconnect_to_server()
 
+func download_file_prepare_name(filepath:String, sv_md5:String) -> Array:#[result, result1, offset
+	download_file_dic['filepath'] = filepath
+	var dl_dir = DirAccess.open(root_dir)
+	if not dl_dir:
+		DirAccess.make_dir_absolute(root_dir)
+	var filename:String = filepath.get_file()
+	var filedir:String = filepath.get_base_dir()
+	dl_tmpfilepath = filedir.path_join("%s_%s_%s"%[sv_md5, filename, tmp_format])
+	var offset = 0
+	if FileAccess.file_exists(filepath):
+		if overwrite == 'yes':
+			var err = DirAccess.remove_absolute(filepath)
+			if err != Error.OK:
+				log_window.add_log('[tcp_transf_class]->download_a_file:remove file failed in download overwrite mode')
+				return [false, false, 0]
+		else:
+			var md5_check:String = FileAccess.get_md5(filepath)
+			if md5_check == sv_md5:
+				log_window.add_log('[tcp_transf_class]->download_a_file:already have this file')
+				return [false, false, 0]
+			else:
+				var err = DirAccess.remove_absolute(filepath)
+				if err != Error.OK:
+					log_window.add_log('[tcp_transf_class]->download_a_file:remove error md5 file failed in download')
+					return [false, false, 0]
+	if FileAccess.file_exists(dl_tmpfilepath):
+		if overwrite == 'yes':
+			var err = DirAccess.remove_absolute(dl_tmpfilepath)
+			if err != Error.OK:
+				log_window.add_log('[tcp_transf_class]->download_a_file:remove tmp file failed in download overwrite mode')
+				return [false, false, 0]
+		else:
+			offset = FileAccess.get_size(dl_tmpfilepath)
+	return [true, true, offset]
 
+func download_report_result(rt:String) -> void:
+	download_running = false
+	if_download_sys = false
+	log_window.add_log('[tcp_transf_class]->download_report_result:download %s!!'%rt)
+	emit_signal('report_result', 'tcp_transf_calss', taskid, 'download', download_file_dic.get('filepath', ''), rt)
+	
 #####################  receive data #########################
 func receiving_data_thread():
 	while rec_data_running:
 		if _socket and _socket.get_status() == StreamPeerTCP.STATUS_CONNECTED:
-			var rec_len = UPLOAD_BUF_SIZE + 28
-			if not if_download_sys:
-				rec_len = _socket.get_available_bytes()
+			var rec_len = _socket.get_available_bytes()
 			if rec_len > 0:
 				var data = _socket.get_data(rec_len)
 				if data[0] == Error.OK:
 					if data[1].size() > 0:
-						print('if_download_sys:%s'%[if_download_sys])
-						if not if_download_sys:
-							var hd:Array = received_get_header(data[1])
-							var header:String = hd[0]
-							var payload:PackedByteArray = hd[1]
-							if header == '|SV>GD|DO:':
-								print('if_download_sys=false, payload size:%s'%[payload.size()])
-								var idx:int = 0
-								while payload.size() > UPLOAD_BUF_SIZE + 18:
-									dl_buffer.append(payload.slice(idx, UPLOAD_BUF_SIZE + 18))
-									payload = payload.slice(UPLOAD_BUF_SIZE + 28, UPLOAD_BUF_SIZE + 18)
-								var this_len:int = payload.slice(0, 4).get_string_from_utf8().hex_to_int()
-								var need_len:int = this_len + 4 - payload.size()
-								if need_len > 0:
-									var need_payload:PackedByteArray = _socket.get_data(need_len)
-									payload = payload + need_payload
-								dl_buffer.append(payload)
-								if_download_sys = true
-							else:
-								received_and_deal_data(header, payload)
-						else:
-							print('if_download_sys=true, payload size:%s'%[data[1].slice(10).size()])
-							received_and_deal_data('|SV>GD|DO:', data[1].slice(10))
+						#print('------------------ 1 -----------------')
+						#print('receiving_data_thread:%s'%[data[1].get_string_from_utf8()])
+						var hd:Array = received_get_header(data[1])
+						var header:String = hd[0]
+						var payload:PackedByteArray = hd[1]
+						received_and_deal_data(header, payload)
 					else:
 						log_window.add_log('[tcp_transf_class]->receiving_data_thread:data[1].size() <= 0')
 				else:
 					log_window.add_log('[tcp_transf_class]->receiving_data_thread:get data error')
 
+func receiving_do_data() -> void:
+	log_window.add_log('[tcp_transf_class]->receiving_do_data')
+	write_thread = Thread.new()
+	write_thread.start(write_a_file_thread)
+	var idx = 0
+	var stime:int = 0
+	var rec_len:int = UPLOAD_BUF_SIZE + 28
+	while download_running:
+		while _socket.get_available_bytes() == 0:
+			pass
+		stime = Time.get_ticks_msec()
+		while _socket.get_available_bytes() < UPLOAD_BUF_SIZE + 28:
+			var ctime:int = Time.get_ticks_msec()
+			if ctime - stime > 1000:
+				rec_len = _socket.get_available_bytes()
+				break
+		var data = _socket.get_data(rec_len)
+		if data[0] == Error.OK:
+			if data[1].size() > 0:
+				if idx < 10:
+					print('------------------ 2 ----------------- %s'%[rec_len])
+					print('receiving_data_thread:%s'%[data[1].get_string_from_utf8()])
+				idx += 1
+				dl_mute.lock()
+				dl_buffer.append(data[1].slice(10))
+				dl_mute.unlock()
+		else:
+			log_window.add_log('[tcp_transf_class]->receiving_data_thread:get data error')
+	log_window.add_log('[tcp_transf_class]->receiving_do_data finish!!!')
+	
 func received_and_deal_data(header:String, data:PackedByteArray) -> void:
 	if header == '|SV>GD|RQ:':
 		var r:Dictionary = receive_parser_req_data(header + data.get_string_from_utf8())
@@ -356,7 +382,41 @@ func received_and_deal_data(header:String, data:PackedByteArray) -> void:
 			else:
 				emit_signal("report_result", "tcp_transf_class", taskid, 'query', '', r.data.message)
 	elif header == '|SV>GD|DO:':
-		dl_buffer.append(data)
+		var data_size_int:int = data.slice(0, 4).get_string_from_utf8().hex_to_int()
+		if len(data) == data_size_int + 4:
+			#print('------------------ 3 -----------------')
+			#print('receiving_data_thread:%s'%[data.slice(0, data_size_int + 4).get_string_from_utf8()])
+			dl_mute.lock()
+			dl_buffer.append(data)
+			dl_mute.unlock()
+			log_window.add_log('[tcp_transf_class]->received_and_deal_data:len(data) == data_size_int + 4')
+			receiving_do_data()
+		elif len(data) > data_size_int + 4:
+			log_window.add_log('[tcp_transf_class]->received_and_deal_data:len(data) > data_size_int + 4')
+			if data.slice(0, 10).get_string_from_utf8() == '040E000000':
+				dl_mute.lock()
+				dl_buffer.append(data.slice(0, data_size_int + 4))
+				dl_mute.unlock()
+				var need_len:int = UPLOAD_BUF_SIZE + 28 - (len(data) - (data_size_int + 4))
+				var rec_data:Array = _socket.get_data(need_len)
+				if rec_data[0] == Error.OK:
+					if rec_data[1].size() > 0:
+						var l:PackedByteArray = data.slice(data_size_int + 4 + 10)
+						var r:PackedByteArray = rec_data[1]
+						#print('------------------ 4 -----------------')
+						#print('receiving_data_thread:%s'%[(l + r).get_string_from_utf8()])
+						dl_mute.lock()
+						dl_buffer.append(l + r)
+						dl_mute.unlock() 
+						receiving_do_data()
+					else:
+						print('!!!!!!!!!!!!!!!!!!!!!!---------1')
+				else:
+					print('!!!!!!!!!!!!!!!!!!!!!!!----------2')
+			else:
+				print('!!!!!!!!!!!!!!!!!!!!!!!!-----------3')
+		else:
+			log_window.add_log('[tcp_transf_class]->received_and_deal_data:len(data) < data_size_int + 4')
 		
 func receive_parser_req_data(data:String):
 	var data_size:String = data.substr(10, 4)
@@ -384,7 +444,7 @@ func receive_parser_req_data(data:String):
 	
 func received_get_header(data:PackedByteArray) -> Array:
 	var p1:PackedByteArray = data.slice(0, 10)
-	var p2:PackedByteArray = data.slice(10, data.size())
+	var p2:PackedByteArray = data.slice(10)
 	var header:String = p1.get_string_from_utf8()
 	return [header, p2]
 	
@@ -393,6 +453,7 @@ func received_get_header(data:PackedByteArray) -> Array:
 func write_a_data_block(f:FileAccess, data_block:PackedByteArray, preidx:int) -> Dictionary:
 	var data_size:String = data_block.slice(0, 4).get_string_from_utf8()
 	if not data_size.is_valid_hex_number():
+		var _a = data_block.slice(0, 100).get_string_from_utf8()
 		log_window.add_log("write_a_data_block: get data size failed")
 		return {'s':0, 'd':1, 'idx':preidx}
 	var data_size_int:int = data_size.hex_to_int()
@@ -401,9 +462,7 @@ func write_a_data_block(f:FileAccess, data_block:PackedByteArray, preidx:int) ->
 		return {'s':0, 'd':2, 'idx':preidx}
 	if len(data_block) != data_size_int + 4:
 		log_window.add_log("write_a_data_block: data_size_int too short:%s != %s + 4"%[data_block.size(), data_size_int])
-		var aa = data_block.get_string_from_utf8()
-		var bb = aa.substr(1024, 100)
-		print(aa)
+		var _a = data_block.slice(0, 100).get_string_from_utf8()
 		return {'s':0, 'd':3, 'idx':preidx}
 	var crc:String = data_block.slice(data_size_int - 8 + 4, data_size_int + 4).get_string_from_utf8()
 	if not crc.is_valid_hex_number():
@@ -415,22 +474,29 @@ func write_a_data_block(f:FileAccess, data_block:PackedByteArray, preidx:int) ->
 		return {'s':0, 'd':5, 'idx':preidx}
 	var idxint:int = idx.hex_to_int()
 	if idxint != 0 and idxint - preidx != 1:
-		log_window.add_log("write_a_data_block: idx not continue")
+		log_window.add_log("write_a_data_block: idx not continue: %s, %s"%[idxint, preidx])
+		var _a = data_block.slice(0, 100).get_string_from_utf8()
 		return {'s':0, 'd':6, 'idx':preidx}
 	var data_payload:PackedByteArray = data_block.slice(10, data_size_int - 8 + 4)
 	var crc_int:int = crc.hex_to_int()
 	var crc_check:int = crc32_class.fCRC32(data_payload)
 	if crc_int != crc_check:
+		var _a = data_block.slice(0, 100).get_string_from_utf8()
 		log_window.add_log("write_a_data_block: crc check error")
 		return {'s':0, 'd':7, 'idx':preidx}
-	if crc_int % 100 == 0:
-		log_window.add_log(crc_int)
+	if idxint % 100 == 0:
+		log_window.add_log('[tcp_transf_class]->write_a_data_block:idx process:%s'%crc_int)
 	if f:
 		f.seek_end()
 	var _r = f.store_buffer(data_payload)
 	return {'s':data_payload.size(), 'd':-1, 'idx':idxint}
 
-func write_a_file_thread(filepath, file_size, md5, offset):
+func write_a_file_thread():
+	log_window.add_log('[tcp_transf_class]->write_a_file_thread start')
+	var filepath:String = download_file_dic.get('filepath', '')
+	var file_size:int = download_file_dic.get('file_size', 0)
+	var md5:String = download_file_dic.get('md5', '')
+	var offset:int = download_file_dic.get('offset', -1)
 	while not download_running:
 		pass
 	var f = FileAccess.open(dl_tmpfilepath, FileAccess.READ_WRITE)
@@ -467,30 +533,25 @@ func write_a_file_thread(filepath, file_size, md5, offset):
 				if_download_sys = false
 	f.close()
 	var md5_check = FileAccess.get_md5(dl_tmpfilepath)
-	if overwrite == 'yes' or md5 == md5_check:
+	if md5 == md5_check:
 		DirAccess.rename_absolute(dl_tmpfilepath, filepath)
-		log_window.add_log('[tcp_transf_class]->write_a_file_thread:download finish!!')
-		emit_signal("report_result", "tcp_transf_class", taskid, 'download', download_file, 'FINISH')
+		log_window.add_log('[tcp_transf_class]->write_a_file_thread:md5 is ok, download finish!!')
+		download_report_result('FINISH')
 	else:
 		need_retry = true
 	if need_retry:
 		log_window.add_log('md5 error!!!!')
 		disconnect_to_server()
 		connect_to_server()
-		download_a_file(filepath, file_size, md5)
-	
+		download_a_file(filepath)
 				
-func request_download(filepath, file_size, md5, offset):
+func request_download(filepath):
 	log_window.add_log("[tcp_transf_class]->request_download:%s"%[filepath])
 	var data = {
 		'req_type': 'download',
 		'filepath': filepath.replace(root_dir + '/', ''),
-		'file_size': file_size,
-		'file_md5': md5,
-		'offset': offset,
 		'status': '-'}
 	request_a_message(data)
-
 	
 func request_upload(filepath) -> void:
 	log_window.add_log("[tcp_transf_class]->request_upload:%s"%[filepath])
