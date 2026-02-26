@@ -40,7 +40,23 @@ var scan_bt:Button = null
 var upload_bt:Button = null
 var delete_bt:Button = null
 var logs_show:Label = null
-var logs_dic:Dictionary = {'pre_current_status':'', 'current_status':'', 'res1':'', 'res2':'', 'message':''}
+var logs_show_scan:Label = null
+var logs_show_upload:Label = null
+var logs_show_delete:Label = null
+var logs_dic:Dictionary = {
+	'pre_current_status':'', 
+	'current_status':'', 
+	'scan_rt':'', 
+	'upload_rt':'', 
+	'download':'',
+	'delete_rt':'',
+	'message':''}
+var e2z_dic:Dictionary = {
+	'upload':'上传',
+	'download':'下载',
+	'login':'登录',
+	'scan':'扫描',
+}
 var TIME_ITEM:Array = [1986, 2106]
 
 var states:Dictionary = {
@@ -129,11 +145,38 @@ func build_gui() -> void:
 	logs_show = Label.new()
 	logs_show.text = ''
 	logs_show.name = 'log_show'
-	logs_show.size = Vector2i(win_size.x, 50)
+	logs_show.size = Vector2i(win_size.x, 20)
 	logs_show.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	logs_show.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	logs_show.label_settings = label_setting_font_15
 	hbox_l0_1.add_child(logs_show)
+	
+	var hbox_l0_2:HBoxContainer = HBoxContainer.new()
+	hbox_l0_2.name = 'logs_show_details'
+	logs_show_scan = Label.new()
+	logs_show_scan.text = ''
+	logs_show_scan.name = 'log_show_scan'
+	logs_show_scan.size = Vector2i(win_size.x, 20)
+	logs_show_scan.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	logs_show_scan.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	logs_show_scan.label_settings = label_setting_font_15
+	hbox_l0_2.add_child(logs_show_scan)
+	logs_show_upload = Label.new()
+	logs_show_upload.text = ''
+	logs_show_upload.name = 'log_show_upload'
+	logs_show_upload.size = Vector2i(win_size.x, 20)
+	logs_show_upload.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	logs_show_upload.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	logs_show_upload.label_settings = label_setting_font_15
+	hbox_l0_2.add_child(logs_show_upload)
+	logs_show_delete = Label.new()
+	logs_show_delete.text = ''
+	logs_show_delete.name = 'log_show_delete'
+	logs_show_delete.size = Vector2i(win_size.x, 20)
+	logs_show_delete.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	logs_show_delete.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	logs_show_delete.label_settings = label_setting_font_15
+	hbox_l0_2.add_child(logs_show_delete)
 	
 	hbox_l1 = HBoxContainer.new()
 	hbox_l1.size = Vector2i(win_size.x - 5, 40)
@@ -160,6 +203,7 @@ func build_gui() -> void:
 	add_child(vbox_top)
 	vbox_top.add_child(hbox_l0)
 	vbox_top.add_child(hbox_l0_1)
+	vbox_top.add_child(hbox_l0_2)
 	vbox_top.add_child(hbox_l1)
 	vbox_top.add_child(vbox_l1_1_login)
 	vbox_top.add_child(vbox_l1_2_setting)
@@ -191,7 +235,7 @@ func build_gui() -> void:
 	hbox_l1.add_child(upload_bt)
 	
 	delete_bt = Button.new()
-	delete_bt.text = '3. 删除文件'
+	delete_bt.text = '3. 清理文件'
 	delete_bt.name = 'delete_bt'
 	delete_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	delete_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
@@ -782,7 +826,8 @@ func update_and_show_files() -> void:
 	for timek in file_dic:
 		add_one_block(idx, timek, file_dic[timek])
 		idx += 1
-		
+	update_log()
+	
 func sort_dic(indic:Dictionary) -> Dictionary:
 	for k in indic:
 		var files:Array = indic[k]
@@ -1056,7 +1101,11 @@ func deal_files() -> void:
 		var on_server = all_files_dic[eachpath]['on_server']
 		var on_ue = all_files_dic[eachpath]['on_ue']
 		if on_server == 'no' and on_ue == 'yes':#need upload
-			upload_dic[eachpath] = 'not upload yet'
+			if eachpath not in upload_dic:
+				upload_dic[eachpath] = {}
+			upload_dic[eachpath]['rt'] = 'not upload yet'
+			upload_dic[eachpath]['process'] = 0
+			upload_dic[eachpath]['size'] = 0
 		elif on_ue == 'yes' and on_server == 'yes':#need check if need delete on UE
 			if if_need_delete_ue_file(all_files_dic[eachpath], 7):
 				delete_dic[eachpath] = 'not delete yet'
@@ -1068,6 +1117,8 @@ func upload_files() -> void:
 
 func upload_files_thread() -> void:
 	for filepath in upload_dic:
+		logs_dic.message = '始上传:%s'%filepath
+		update_log()
 		log_window.add_log("[connect_home]->upload_files_thread: will upload a file:%s"%[filepath])
 		upload_a_file(filepath)
 		while not upload_finish:
@@ -1079,19 +1130,24 @@ func upload_files_thread() -> void:
 func delete_files() -> void:
 	var upload_again_list:Array = []
 	var upload_again_list_:Array = []
+	var success_cnt:int = 0
+	var failed_cnt:int = 0
 	if query_rt != 'all ok':
 		upload_again_list_ = query_rt.split(';')
 	for eachf in upload_again_list_:
 		upload_again_list.append(UE_ROOT_DIR.path_join(eachf))
 	for filepath in delete_dic:
 		if filepath in upload_again_list:
+			failed_cnt += 1
 			continue
 		log_window.add_log('[connect_home]->delete_files:will delete file: %s'%[filepath])
 		if FileAccess.file_exists(filepath):
 			DirAccess.remove_absolute(filepath)
 			delete_dic[filepath] = 'deleted'
+			success_cnt += 1
 	update_files_table_after_delete()
-	_on_class_report_result('connect_home', '', 'delete_files', '', 'FINISH')
+	_on_class_report_result('connect_home', '', 'delete_files', '应清理:%s个, 清理成功%s个, 清理失败%s个'%[
+		delete_dic.keys().size(), success_cnt, failed_cnt], 'FINISH')
 	
 func upload_a_file(filepath) -> bool:
 	var taskid:String = generate_task_id()
@@ -1099,7 +1155,6 @@ func upload_a_file(filepath) -> bool:
 	upload_obj.connect("report_result", _on_class_report_result)
 	upload_obj.upload_a_file(filepath)
 	logs_dic.message = 'upload_a_file:%s'%[filepath]
-	update_log()
 	return true
 
 func pull_files_table() -> void:
@@ -1124,7 +1179,7 @@ func update_files_table_after_upload() -> void:
 	var f_table:Dictionary = scan_files_obj.read_db().get('all_files_dic', {})
 	var d_table:Dictionary = scan_files_obj.read_db().get('rename_files_dic', {})
 	for eachfile in upload_dic:
-		if upload_dic[eachfile] != 'uploaded':
+		if upload_dic[eachfile]['rt'] != 'uploaded':
 			continue
 		if eachfile in f_table:
 			f_table[eachfile]['on_server'] = 'yes'
@@ -1237,9 +1292,9 @@ func update_state() -> void:
 			next_func.call()
 
 func update_log() -> void:
-	logs_show.call_deferred('set', 'text', "%s, %s, %s, %s, %s" % \
-	[logs_dic.pre_current_status, logs_dic.current_status, logs_dic.res1, logs_dic.res2,
-	logs_dic.message])
+	logs_show_scan.call_deferred('set', 'text', "%s"%[logs_dic.scan_rt])
+	logs_show_upload.call_deferred('set', 'text', "%s"%[logs_dic.upload_rt])
+	logs_show_delete.call_deferred('set', 'text', "%s"%[logs_dic.delete_rt])
 
 func pre_update_state() -> void:
 	var next_state = states.get(current_state, {}).get('next_state', '')
@@ -1263,7 +1318,7 @@ func _on_class_report_result(who_i_am:String, taskid:String, req_type:String, in
 			if req_type == 'upload' and taskid == upload_obj.taskid:# and result == 'FINISH':       ## 2.1
 				log_window.add_log("[connect_home]->_on_class_report_result:upload file:%s, result:%s"%[infor, result])
 				if result == 'FINISH':
-					upload_dic[infor] = 'uploaded'
+					upload_dic[infor]['rt'] = 'uploaded'
 				upload_finish = true
 		elif current_state == 'query_files':# query finish                                          ## 3.1
 			if req_type == 'query' and taskid == query_obj.taskid:
@@ -1273,12 +1328,30 @@ func _on_class_report_result(who_i_am:String, taskid:String, req_type:String, in
 			if req_type == 'upload' and taskid == push_obj.taskid:
 				pre_update_state()
 				update_and_show_files()
-				
+		
+		if result == 'START':
+			logs_show.call_deferred("set_text", '[%s, %s], 开始%s:%s'%[current_state, pre_current_state,
+			e2z_dic.get(req_type, ''), infor])
+		elif result == 'PROCESS':
+			var a:Array = infor.split(';')
+			if a[0] in upload_dic:
+				upload_dic[a[0]]['process'] = result
+				upload_dic[a[0]]['size'] = a[1]
+			var b:int = 0
+			var c:int = 0
+			for eachf in upload_dic:
+				b += upload_dic[a[0]]['process']
+				c += upload_dic[a[0]]['size']
+			logs_show.call_deferred("set_text", '[%s, %s], 上传进度%.1f'%[100 * b / c])
 	elif who_i_am == 'scan_class':###                                                               ## 1.2
 		if current_state == 'scan_files':# scan finish
 			if taskid == scan_files_obj.taskid and result == 'FINISH':
+				var scan_rt:Dictionary = JSON.parse_string(infor)
+				logs_dic.scan_rt = '扫描:%s, 新增:%s, 修改:%s, 可删除:%s'%[scan_rt.all, scan_rt.add, scan_rt.mod, scan_rt.del]
 				update_state()
-				
+		if result == 'START':
+			logs_show.call_deferred("set_text", '[%s, %s], 开始%s:%s'%[current_state, pre_current_state,
+			e2z_dic.get(req_type, ''), infor])
 	elif who_i_am == 'connect_home':
 		if current_state == 'deal_files':# deal files finish                                        ## !1.3
 			if req_type == 'deal_files' and result == 'FINISH':
@@ -1286,10 +1359,19 @@ func _on_class_report_result(who_i_am:String, taskid:String, req_type:String, in
 				update_and_show_files()
 		elif current_state == 'upload_files':# upload all files finish                              ## 2.2
 			if req_type == 'upload_files' and result == 'FINISH':
+				var success_cnt:int = 0
+				var failed_cnt:int = 0
+				for eachf in upload_dic:
+					if upload_dic[eachf]['rt'] == 'uploaded':
+						success_cnt += 1
+					else:
+						failed_cnt += 1
+				logs_dic.scan_rt = '应上传:%s个, 上传成功:%s个, 上传失败:%s个'%[upload_dic.keys().size(), success_cnt, failed_cnt]
 				current_state = 'delete_files'## force to delete_files
 				update_state()
 		elif current_state == 'delete_files':# delete files finish                                  ## 3.2
 			if req_type == 'delete_files' and result == 'FINISH':
+				logs_dic.delete_rt = infor
 				pre_update_state()
 		
 	

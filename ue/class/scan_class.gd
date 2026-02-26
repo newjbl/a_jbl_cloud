@@ -12,7 +12,7 @@ var scan_thread_running:bool = false
 var taskid:String = ''
 var new_files_dic:Dictionary = {}
 var log_window = null
-
+var scan_rt:Dictionary = {'all':0, 'add':0, 'mod':0, 'del':0}
 signal scan_finished(who_i_am:String, taskid:String, req_type:String, infor:String, result:String)
 
 func _init(log_win, _taskid:String, db:String, ue_root_dir:String, dirdic:Dictionary, dis_files_type:Dictionary) -> void:
@@ -25,7 +25,6 @@ func _init(log_win, _taskid:String, db:String, ue_root_dir:String, dirdic:Dictio
 	for k in dis_files_type:
 		for kk in dis_files_type[k]:
 			scan_ext_list.append(kk.to_upper())
-	print(scan_ext_list)
 	scan_finished.connect(_on_scan_status_changed)
 	_init_db()
 	
@@ -39,20 +38,22 @@ func scan_a_dir_thread(scan_root_dir:String) -> void:
 	get_all_files(scan_root_dir)
 	scan_thread_running = false
 	merger_table()
-	emit_signal("scan_finished", 'scan_class', taskid, 'scan', '', 'FINISH')
+	emit_signal("scan_finished", 'scan_class', taskid, 'scan', JSON.stringify(scan_rt), 'FINISH')
 	
 func merger_table() -> void:
 	var db_dic:Dictionary = read_db()
 	var server_files_dic:Dictionary = db_dic.get('all_files_dic', {})
 	var rename_files_dic:Dictionary = {}
 	var rmv_files_list:Array = []
-	for eachfile in server_files_dic:
-		##remove
-		if eachfile not in new_files_dic and server_files_dic[eachfile].get('on_server', '') == 'no':
-			rmv_files_list.append(eachfile)
-	for eachfile in rmv_files_list:
-		log_window.add_log('[scan_class]->merger_table:remove %s'%[eachfile])
-		server_files_dic.erase(eachfile)
+	#### 先注释掉， 因为不应该让UE告诉SERVER删除文件
+	#for eachfile in server_files_dic:
+		###remove
+		#if eachfile not in new_files_dic and server_files_dic[eachfile].get('on_server', '') == 'no':
+			#rmv_files_list.append(eachfile)
+	#for eachfile in rmv_files_list:
+		#log_window.add_log('[scan_class]->merger_table:remove %s'%[eachfile])
+		#server_files_dic.erase(eachfile)
+	scan_rt.all = new_files_dic.keys().size()
 	for eachfile in new_files_dic:
 		var sdic = server_files_dic.get(eachfile, {})
 		var ndic = new_files_dic[eachfile]
@@ -60,6 +61,7 @@ func merger_table() -> void:
 		if eachfile not in server_files_dic:
 			log_window.add_log("[scan_class]->merger_table:add %s"%[eachfile])
 			server_files_dic[eachfile] = ndic
+			scan_rt.add = scan_rt.add + 1
 			### create icon
 			log_window.add_log('[scan_class]->merger_table:create icon finish:%s'%[eachfile])
 		##mod
@@ -71,11 +73,13 @@ func merger_table() -> void:
 				server_files_dic[bakfile] = sdic
 				server_files_dic[eachfile] = ndic
 				rename_files_dic[eachfile] = bakfile
+				scan_rt.mod = scan_rt.mod + 1
 				log_window.add_log("mod:%s > %s"%[eachfile, bakfile])
 	write_db({"all_files_dic": server_files_dic, "rename_files_dic": rename_files_dic})
 	
 func get_all_files(scaned_path:String) -> void:
 	log_window.add_log('[scan_class]->get_all_files:will scan:%s'%[scaned_path])
+	emit_signal("scan_finished", 'scan_class', taskid, 'scan', scaned_path, 'START')
 	var dir:DirAccess = DirAccess.open(scaned_path)
 	if dir == null:
 		log_window.add_log("open dir failed:", scaned_path, " reason:", DirAccess.get_open_error())

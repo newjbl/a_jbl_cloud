@@ -32,7 +32,7 @@ ERROR_CODE_DIC = {
     "OK":'',
     "FINISH":'',
 }
-
+download_process_dic = {}
 LOGIN_DIC = {}
 Path(FILE_SAVE_DIR).mkdir(parents=True, exist_ok=True)
 debug_ctl_flag = True
@@ -285,9 +285,14 @@ def handle_ue_upload_do(upload_socket:socket.socket, client_addr:tuple, upload_t
             update_login_dic(upload_socket, client_addr)
             print("[%s]ue(%s) upload link disconnect"%(datetime.now(), client_addr))
             return True
-        elif int((new_offset / file_size) * 100) % 10 == 0:
-            progress = new_offset / file_size
-            send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "PROCESS", "%s"%(progress), new_offset)
+        else:
+            global download_process_dic
+            filepath = upload_text['fin_file_path']
+            download_process = download_process_dic.get(filepath, '0.0')
+            new_download_process = "%.1f"%(new_offset / file_size)
+            if new_download_process != download_process:
+                send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "PROCESS", "%s;%s" % (filepath, file_size), new_offset)
+                download_process_dic[filepath] = new_download_process
         return True
     except Exception as e:
         import traceback
@@ -395,6 +400,7 @@ def handle_ue_download_do(download_socket:socket.socket, fin_file_path, meta_jso
             if offset * UE_UPLOAD_BLOCK_SIZE >= file_size:
                 print("[%s]start handle ue download finish(size>=file_size):%s" % (datetime.now(), fin_file_path))
                 break
+    print("[%s]finish handle ue download:%s" % (datetime.now(), fin_file_path))
 
 def start_godot_upload_server():
     godot_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

@@ -96,6 +96,7 @@ func query_files(filedic:Dictionary) -> void:
 	
 func login_do(loopmax=3) -> bool:
 	log_window.add_log("[tcp_transf_class]->login_do.")
+	emit_signal("report_result", 'tcp_transf_class', taskid, 'login', '', 'START')
 	if _socket.get_status() != StreamPeerTCP.STATUS_CONNECTED:
 		log_window.add_log("[tcp_transf_class]->login_do failed due to _socket status is %s"%[_socket.get_status()])
 		return false
@@ -141,6 +142,7 @@ func disconnect_to_server() -> void:
 #############################  upload ########################
 func upload_a_file(filepath:String) -> void:
 	log_window.add_log("[tcp_transf_class]->upload_a_file:%s"%[filepath])
+	emit_signal("report_result", 'tcp_transf_class', taskid, 'upload', filepath, 'START')
 	connect_to_server()
 	var r = login_do()
 	if not r:
@@ -205,6 +207,7 @@ func upload_data(filepath, offset) -> void:
 ######################### download #########################
 func download_a_file(filepath:String) -> void:
 	log_window.add_log("[tcp_transf_class]->download_a_file:%s"%[filepath])
+	emit_signal("report_result", 'tcp_transf_class', taskid, 'download', filepath, 'START')
 	if FileAccess.file_exists(filepath) and overwrite == 'no':
 		log_window.add_log("[tcp_transf_class]->download_a_file: file not exist!")
 		return
@@ -278,7 +281,7 @@ func download_file_prepare_name(filepath:String, sv_md5:String) -> Array:#[resul
 			var md5_check:String = FileAccess.get_md5(filepath)
 			if md5_check == sv_md5:
 				log_window.add_log('[tcp_transf_class]->download_a_file:already have this file')
-				return [false, false, 0]
+				return [false, true, 0]
 			else:
 				var err = DirAccess.remove_absolute(filepath)
 				if err != Error.OK:
@@ -371,7 +374,9 @@ func received_and_deal_data(header:String, data:PackedByteArray) -> void:
 			elif status == 'FINISH':
 				log_window.add_log("[tcp_transf_class]->received_and_deal_data: upload FINISH")
 				emit_signal("report_result", "tcp_transf_class", taskid, 'upload', upload_file, 'FINISH')
-				
+			elif status == 'PROCESS':
+				emit_signal("report_result", 'tcp_transf_class', taskid, 'upload', '%s;%s'%[req_upload_ack.get('offset', '0'),
+				req_upload_ack.get('message', ';0')], 'PROCESS')
 		elif req_type == 'download':
 			req_download_ack = r.data
 		elif req_type == 'login':
@@ -457,8 +462,8 @@ func write_a_data_block(f:FileAccess, data_block:PackedByteArray, preidx:int) ->
 		log_window.add_log("write_a_data_block: get data size failed")
 		return {'s':0, 'd':1, 'idx':preidx}
 	var data_size_int:int = data_size.hex_to_int()
-	if data_size_int <= 18:
-		log_window.add_log("write_a_data_block: data_size_int <= 18")
+	if data_size_int <= 14:
+		log_window.add_log("write_a_data_block: data_size_int <= 14")
 		return {'s':0, 'd':2, 'idx':preidx}
 	if len(data_block) != data_size_int + 4:
 		log_window.add_log("write_a_data_block: data_size_int too short:%s != %s + 4"%[data_block.size(), data_size_int])
