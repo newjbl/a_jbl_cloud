@@ -126,6 +126,9 @@ func login_do(loopmax=3) -> bool:
 		
 func disconnect_to_server() -> void:
 	log_window.add_log("[tcp_transf_class]->disconnect_to_server.")
+	if _socket == null:
+		log_window.add_log("[tcp_transf_class]->disconnect_to_server. _socket is null")
+		return
 	rec_data_running = false
 	download_running = false
 	if_download_sys = false
@@ -142,7 +145,8 @@ func disconnect_to_server() -> void:
 #############################  upload ########################
 func upload_a_file(filepath:String) -> void:
 	log_window.add_log("[tcp_transf_class]->upload_a_file:%s"%[filepath])
-	emit_signal("report_result", 'tcp_transf_class', taskid, 'upload', filepath, 'START')
+	if not filepath.ends_with('/files.txt'):
+		emit_signal("report_result", 'tcp_transf_class', taskid, 'upload', filepath, 'START')
 	connect_to_server()
 	var r = login_do()
 	if not r:
@@ -207,7 +211,8 @@ func upload_data(filepath, offset) -> void:
 ######################### download #########################
 func download_a_file(filepath:String) -> void:
 	log_window.add_log("[tcp_transf_class]->download_a_file:%s"%[filepath])
-	emit_signal("report_result", 'tcp_transf_class', taskid, 'download', filepath, 'START')
+	if not filepath.ends_with('/files.txt'):
+		emit_signal("report_result", 'tcp_transf_class', taskid, 'download', filepath, 'START')
 	if FileAccess.file_exists(filepath) and overwrite == 'no':
 		log_window.add_log("[tcp_transf_class]->download_a_file: file not exist!")
 		return
@@ -223,6 +228,10 @@ func download_a_file(filepath:String) -> void:
 
 func download_a_file_thread(filepath) -> void:
 	log_window.add_log("[tcp_transf_class]->download_a_file_thread:%s"%[filepath])
+	if overwrite == 'yes':
+		if not download_file_prepare_name_overwrite(filepath):
+			log_window.add_log('[tcp_transf_class]->download_a_file:remove file failed in download overwrite mode')
+			return
 	var stime = Time.get_ticks_msec()
 	var loop_cnt = 0
 	while download_running and loop_cnt <= 3:
@@ -259,9 +268,18 @@ func download_a_file_thread(filepath) -> void:
 		else:
 			download_report_result('FAILED')
 	else:
-		log_window.add_log('download failed:%s'%[req_download_ack.get('message', 'unknown error')])
+		download_report_result(rt_status)
 		disconnect_to_server()
 
+func download_file_prepare_name_overwrite(filepath:String) -> bool:
+	if FileAccess.file_exists(filepath):
+		var err = DirAccess.remove_absolute(filepath)
+		if err != Error.OK:
+			log_window.add_log('[tcp_transf_class]->download_a_file:remove file failed in download overwrite mode')
+			return false
+		return true
+	return true
+	
 func download_file_prepare_name(filepath:String, sv_md5:String) -> Array:#[result, result1, offset
 	download_file_dic['filepath'] = filepath
 	var dl_dir = DirAccess.open(root_dir)
@@ -305,7 +323,7 @@ func download_report_result(rt:String) -> void:
 	
 #####################  receive data #########################
 func receiving_data_thread():
-	while rec_data_running:
+	while rec_data_running and _socket:
 		if _socket and _socket.get_status() == StreamPeerTCP.STATUS_CONNECTED:
 			var rec_len = _socket.get_available_bytes()
 			if rec_len > 0:
@@ -327,25 +345,27 @@ func receiving_do_data() -> void:
 	log_window.add_log('[tcp_transf_class]->receiving_do_data')
 	write_thread = Thread.new()
 	write_thread.start(write_a_file_thread)
-	var idx = 0
+	#var idx:int = 0
 	var stime:int = 0
 	var rec_len:int = UPLOAD_BUF_SIZE + 28
-	while download_running:
-		while _socket.get_available_bytes() == 0:
+	while download_running and _socket:
+		while _socket and _socket.get_available_bytes() == 0:
 			pass
 		stime = Time.get_ticks_msec()
-		while _socket.get_available_bytes() < UPLOAD_BUF_SIZE + 28:
+		while  _socket and _socket.get_available_bytes() < UPLOAD_BUF_SIZE + 28:
 			var ctime:int = Time.get_ticks_msec()
 			if ctime - stime > 1000:
 				rec_len = _socket.get_available_bytes()
 				break
+		if _socket == null:
+			return
 		var data = _socket.get_data(rec_len)
 		if data[0] == Error.OK:
 			if data[1].size() > 0:
 				#if idx < 10:
 				#	print('------------------ 2 ----------------- %s'%[rec_len])
 				#	print('receiving_data_thread:%s'%[data[1].get_string_from_utf8()])
-				idx += 1
+				#idx += 1
 				dl_mute.lock()
 				dl_buffer.append(data[1].slice(10))
 				dl_mute.unlock()
@@ -581,4 +601,7 @@ func request_a_message(req_dic:Dictionary):
 	else:
 		log_window.add_log('[tcp_transf_class]->request_a_message:disconnect, send message failed')
 		
-		
+func tcp_destory() -> void:
+	disconnect_to_server()
+	_socket = null
+	queue_free()		

@@ -44,8 +44,8 @@ func merger_table() -> void:
 	var db_dic:Dictionary = read_db()
 	var server_files_dic:Dictionary = db_dic.get('all_files_dic', {})
 	var rename_files_dic:Dictionary = {}
-	var rmv_files_list:Array = []
 	#### 先注释掉， 因为不应该让UE告诉SERVER删除文件
+	#var rmv_files_list:Array = []
 	#for eachfile in server_files_dic:
 		###remove
 		#if eachfile not in new_files_dic and server_files_dic[eachfile].get('on_server', '') == 'no':
@@ -158,5 +158,7 @@ func read_db() -> Dictionary:
 func _on_scan_status_changed(who_i_am:String, _taskid:String, req_type:String, infor:String, result:String) -> void:
 	log_window.add_log("%s-%s %s %s %s" % [who_i_am, _taskid, req_type, infor, result])
 	
+func scan_destory() -> void:
+	queue_free()	
 			
 	

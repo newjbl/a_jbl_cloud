@@ -104,6 +104,7 @@ def handle_ue_upload(upload_socket:socket.socket, client_addr:tuple):
     upload_text = {
         "is_uploading": True,
         "filename":'',
+        "gd_filepath":'',
         "tmp_file_path": '',
         "fin_file_path": '',
         "file_size": 0,
@@ -136,7 +137,6 @@ def handle_ue_upload(upload_socket:socket.socket, client_addr:tuple):
         print("[%s]ue(%s) upload link disconnect"%(datetime.now(), client_addr))
 
 def handle_ue_upload_req(upload_socket:socket.socket, client_addr:tuple, upload_text):
-    req_type = ""
     try:
         req_len = upload_socket.recv(4)
         if not req_len:
@@ -191,6 +191,7 @@ def handle_ue_upload_details(upload_socket:socket.socket, client_addr:tuple, met
         send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "ERROR1", ERROR_CODE_DIC["ERROR1"], 0)
         return False
     print("[%s]ue(%s) request upload parameters OK: filepath is %s, filesize is %s, md5 is %s"%(datetime.now(), client_addr, filepath, file_size, file_md5))
+    upload_text['gd_filepath'] = filepath
     usr_dir = LOGIN_DIC.get(client_addr, {}).get("usr_dir", "")
     if not usr_dir:
         print("[%s]ue(%s) upload root dir mistake"%(datetime.now(), client_addr))
@@ -291,7 +292,7 @@ def handle_ue_upload_do(upload_socket:socket.socket, client_addr:tuple, upload_t
             download_process = download_process_dic.get(filepath, '0.0')
             new_download_process = "%.1f"%(new_offset / file_size)
             if new_download_process != download_process:
-                send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "PROCESS", "%s;%s" % (filepath, file_size), new_offset)
+                send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "PROCESS", "%s;%s" % (upload_text['gd_filepath'], file_size), new_offset)
                 download_process_dic[filepath] = new_download_process
         return True
     except Exception as e:

@@ -4,3 +4,7 @@
 
 [node name="connect_home" type="Node2D" unique_id=1961771229]
 script = ExtResource("1_iwraj")
+
+[node name="bd_color" type="ColorRect" parent="." unique_id=1401391855]
+offset_right = 40.0
+offset_bottom = 40.0
