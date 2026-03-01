@@ -1026,7 +1026,7 @@ func _on_scan_bt_pressed() -> void:
 
 ### upload_files -> push_files_table -> update_and_show_files
 func _on_upload_bt_pressed() -> void:
-	log_window.add_log('[connect_home]->_on_upload_bt_pressed:%s, %s'%[current_state])
+	log_window.add_log('[connect_home]->_on_upload_bt_pressed:%s'%[current_state])
 	if current_state == 'upload_files':
 		upload_or_delete = 'upload'
 		excute_state()
@@ -1201,6 +1201,8 @@ func upload_files_thread() -> void:
 	for filepath in upload_dic:
 		logs_dic.message = '开始上传:%s'%filepath
 		show_sub_log()
+		log_window.add_log("[connect_home]->upload_files_thread:will upload:%s"%filepath)
+		upload_a_file(filepath)
 	log_window.add_log("[connect_home]->upload_files_thread:thread_finish")
 
 func delete_files() -> void:
@@ -1402,8 +1404,9 @@ func _from_tcp_transf_class(_who_i_am:String, taskid:String, req_type:String, in
 			excute_state()
 	elif current_state == 'upload_files':## upload one file finish
 		if req_type == 'upload' and taskid in upload_task_dic and result == 'FINISH':       ## 2.1
-			upload_task_dic[taskid].tcp_destory()
-			upload_task_dic[taskid].queue_free()
+			if taskid in upload_dic:
+				upload_task_dic[taskid].tcp_destory()
+				upload_task_dic[taskid].queue_free()
 			show_main_log("[%s]上传完成:%s"%[current_state, infor])
 			log_window.add_log("[connect_home]->_on_class_report_result:upload file:%s, result:%s"%[infor, result])
 			if result == 'FINISH':
