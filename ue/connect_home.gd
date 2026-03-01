@@ -1392,7 +1392,7 @@ func show_upload_process() -> void:
 		b += upload_dic[eachf]['process']
 		c += upload_dic[eachf]['size']
 	if c != 0:
-		logs_show.call_deferred("set_text", '[%s, %s], 上传进度%.1f'%[100 * b / c]) 
+		logs_show.call_deferred("set_text", '[%s], 上传进度%.1f'%[100 * b / c]) 
 	
 func _from_tcp_transf_class(_who_i_am:String, taskid:String, req_type:String, infor:String, result:String) -> void:
 	if current_state == 'pull_files_table':## pull finish                                       ## 1.1
@@ -1440,9 +1440,10 @@ func _from_tcp_transf_class(_who_i_am:String, taskid:String, req_type:String, in
 		show_main_log('[%s], 开始%s:%s'%[current_state, e2z_dic.get(req_type, ''), infor])
 	elif result == 'PROCESS':
 		var a:Array = infor.split(';')
-		if a[0] in upload_dic:
-			upload_dic[a[0]]['process'] = result
-			upload_dic[a[0]]['size'] = a[1]
+		var filepath:String = UE_ROOT_DIR.path_join(a[1])
+		if filepath in upload_dic:
+			upload_dic[filepath]['process'] = a[0].to_int()
+			upload_dic[filepath]['size'] = a[2].to_int()
 		show_upload_process()
 	elif result == 'FAILED':
 		show_main_log('[%s], 失败'%[current_state])
