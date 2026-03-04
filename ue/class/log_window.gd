@@ -10,6 +10,7 @@ var drag_offset := Vector2.ZERO
 var log_buffer:Array = []
 
 func _ready():
+	log_text.bbcode_enabled = true
 	clear_btn.pressed.connect(_on_clear)
 	close_btn.pressed.connect(_on_close)
 
@@ -50,6 +51,8 @@ func _input(event):
 func _process(_delta: float) -> void:
 	if log_buffer.size() > 0:
 		for t in log_buffer:
+			log_text.push_font_size(20)
+			log_text.push_color(Color.RED)
 			log_text.append_text(t + '\n')
 		log_buffer.clear()
 		log_text.scroll_to_line(log_text.get_line_count())

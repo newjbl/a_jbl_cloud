@@ -761,6 +761,8 @@ func build_gui() -> void:
 	filter_type.add_item("音频", 3)
 	filter_type.add_item("其他", 4)
 	filter_type.add_item("所有", 5)
+	var filter_type_pop:PopupMenu = filter_type.get_popup()
+	type_display_style(filter_type_pop, DEFAULT_FONT_HALF_SIZE)
 	filter_type.connect("item_selected", _on_filter_type_toggled.bind(filter_type))
 	hbox_l2.add_child(filter_type)
 	var input_txt:LineEdit = LineEdit.new()
@@ -1334,6 +1336,7 @@ func update_files_table_after_upload_thread() -> void:
 func update_files_table_after_delete() -> void:
 	if update_files_adelete_thread:
 		update_files_adelete_thread.wait_to_finish()
+	update_files_adelete_thread = Thread.new()
 	update_files_adelete_thread.start(update_files_table_after_delete_thread)
 		
 func update_files_table_after_delete_thread() -> void:
