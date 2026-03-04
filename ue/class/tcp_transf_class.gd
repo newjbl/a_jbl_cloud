@@ -275,7 +275,7 @@ func download_file_prepare_name_overwrite(filepath:String) -> bool:
 	if FileAccess.file_exists(filepath):
 		var err = DirAccess.remove_absolute(filepath)
 		if err != Error.OK:
-			log_window.add_log('[tcp_transf_class]->download_a_file:remove file failed in download overwrite mode')
+			log_window.add_log('[tcp_transf_class]->download_file_prepare_name_overwrite:remove file failed in download overwrite mode')
 			return false
 		return true
 	return true
@@ -349,10 +349,10 @@ func receiving_do_data() -> void:
 	var stime:int = 0
 	var rec_len:int = UPLOAD_BUF_SIZE + 28
 	while download_running and _socket:
-		while _socket and _socket.get_available_bytes() == 0:
+		while download_running and _socket and _socket.get_available_bytes() == 0:
 			pass
 		stime = Time.get_ticks_msec()
-		while  _socket and _socket.get_available_bytes() < UPLOAD_BUF_SIZE + 28:
+		while  download_running and _socket and _socket.get_available_bytes() < UPLOAD_BUF_SIZE + 28:
 			var ctime:int = Time.get_ticks_msec()
 			if ctime - stime > 1000:
 				rec_len = _socket.get_available_bytes()
@@ -561,6 +561,7 @@ func write_a_file_thread():
 	if md5 == md5_check:
 		DirAccess.rename_absolute(dl_tmpfilepath, filepath)
 		log_window.add_log('[tcp_transf_class]->write_a_file_thread:md5 is ok, download finish!!')
+		disconnect_to_server()
 		download_report_result('FINISH')
 	else:
 		need_retry = true
@@ -601,7 +602,21 @@ func request_a_message(req_dic:Dictionary):
 	else:
 		log_window.add_log('[tcp_transf_class]->request_a_message:disconnect, send message failed')
 		
-func tcp_destory() -> void:
+func _destory() -> void:
 	disconnect_to_server()
 	_socket = null
+	if rec_data_thread:
+		rec_data_thread.wait_to_finish()
+	rec_data_thread = null
+	if download_thread:
+		download_thread.wait_to_finish()
+	download_thread = null
+	if upload_thread:
+		upload_thread.wait_to_finish()
+	upload_thread = null
+	if write_thread:
+		write_thread.wait_to_finish()
+	write_thread = null
+	dl_mute = null
+	crc32_class.free()
 	queue_free()		

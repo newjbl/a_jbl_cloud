@@ -92,13 +92,15 @@ func get_all_files(scaned_path:String) -> void:
 			if is_a_subdir_for_blist(current_path, scan_dir_list):
 				get_all_files(current_path)
 		else:
+			print('!!!!!!!!!!%s'%current_name)
 			if current_name in ignore_file_list:
 				log_window.add_log("[scan_class]->get_all_files:ignore file:%s"%[current_name])
 				current_name = dir.get_next()
 				continue
 			var filetype = current_path.get_extension().to_upper()
+			
 			if filetype not in scan_ext_list:
-				#log_window.add_log("[scan_class]->get_all_files:ignore ext file:%s"%[current_name])
+				log_window.add_log("[scan_class]->get_all_files:ignore ext file:%s"%[current_name])
 				current_name = dir.get_next()
 				continue
 			var md5:String = FileAccess.get_md5(current_path)
@@ -158,7 +160,9 @@ func read_db() -> Dictionary:
 func _on_scan_status_changed(who_i_am:String, _taskid:String, req_type:String, infor:String, result:String) -> void:
 	log_window.add_log("%s-%s %s %s %s" % [who_i_am, _taskid, req_type, infor, result])
 	
-func scan_destory() -> void:
-	queue_free()	
-			
+func _destory() -> void:
+	if scan_thread:
+		scan_thread.wait_to_finish()
+	scan_thread = null
+	queue_free()
 	

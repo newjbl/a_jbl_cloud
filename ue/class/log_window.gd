@@ -14,11 +14,13 @@ func _ready():
 	close_btn.pressed.connect(_on_close)
 
 func add_log(text:String):
-	call_deferred("_add_log_safe", text)
+	var ctime:String = Time.get_time_string_from_system()
+	var text_t:String = "[%s] %s" % [ctime, text]
+	print(text_t)
+	call_deferred("_add_log_safe", text_t)
 
 func _add_log_safe(text:String):
-	var time = Time.get_time_string_from_system()
-	log_buffer.append("[%s] %s" % [time, text])
+	log_buffer.append(text)
 
 #func add_log_thread(text:String) -> void:
 	#var time = Time.get_time_string_from_system()
@@ -49,6 +51,5 @@ func _process(_delta: float) -> void:
 	if log_buffer.size() > 0:
 		for t in log_buffer:
 			log_text.append_text(t + '\n')
-			print(t)
 		log_buffer.clear()
 		log_text.scroll_to_line(log_text.get_line_count())

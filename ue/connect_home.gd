@@ -87,6 +87,13 @@ var upload_dic:Dictionary = {}
 var delete_dic:Dictionary = {}
 var query_rt:String = ''
 
+var update_show_thread:Thread = null
+var upload_thread:Thread = null
+var update_files_aupload_thread:Thread = null
+var update_files_adelete_thread:Thread = null
+var clear_list:Array = []
+var search_key:String = ''
+
 var log_window = null
 var debug_on_win:bool = false
 
@@ -162,7 +169,7 @@ func build_gui() -> void:
 	var hbox_l0:HBoxContainer = HBoxContainer.new()
 	hbox_l0.name = 'title'
 	var app_title_label:Label = Label.new()
-	app_title_label.text = '文件回家 V0.4.0'
+	app_title_label.text = '文件回家 V0.4.2'
 	app_title_label.size = Vector2i(win_size.x, 50)
 	app_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	app_title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -767,6 +774,7 @@ func build_gui() -> void:
 	type_display_style(cfm_bt, DEFAULT_FONT_HALF_SIZE)
 	cfm_bt.add_theme_stylebox_override("normal", bt_theme)
 	cfm_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	cfm_bt.connect('pressed', _on_search_bt_pressed.bind(input_txt))
 	hbox_l2.add_child(cfm_bt)
 	
 	### L3
@@ -795,12 +803,30 @@ func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 	for filedic in block_dic:
 		var filename:String = filedic.get('filename', '')
 		var filesize:float = filedic.get('filesize', 0) / 1024.0 / 1024.0
+		var on_ue:String = filedic.get('on_ue', 'no')
+		var on_server:String = filedic.get('on_server', 'no')
 		var icon_path:String = ICON_DIR.path_join(filedic.get('md5', ''))
 		var texture_vbox:VBoxContainer = VBoxContainer.new()
 		texture_vbox.name = 'texture_box_%s'%[idy]
 		idy += 1
 		var texture_rec:TextureRect = TextureRect.new()
 		texture_rec.name = "texture_rec"
+		if on_server == 'yes':
+			var texture_on_server:TextureRect = TextureRect.new()
+			texture_on_server.name = 'texture_on_server'
+			texture_on_server.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			texture_on_server.custom_minimum_size = Vector2i(16, 16)
+			texture_on_server.position = Vector2i(s - 30, 10)
+			texture_on_server.texture = load("res://db/on_server.png")
+			texture_rec.add_child(texture_on_server)
+		if on_ue == 'yes':
+			var texture_on_ue:TextureRect = TextureRect.new()
+			texture_on_ue.name = 'texture_on_ue'
+			texture_on_ue.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			texture_on_ue.custom_minimum_size = Vector2i(16, 16)
+			texture_on_ue.position = Vector2i(s - 30, s - 30)
+			texture_on_ue.texture = load("res://db/on_ue.png")
+			texture_rec.add_child(texture_on_ue)
 		var texture_label:Label = Label.new()
 		texture_label.name = 'texture_label'
 		texture_label.label_settings = label_setting_font_15
@@ -866,24 +892,47 @@ func sort_files_by_method_duration(f_table:Dictionary) -> Dictionary:
 	return rt
 
 func update_and_show_files() -> void:
-	for obj in vbox_l3_vbox.get_children():
-		vbox_l3_vbox.remove_child(obj)
-		obj.queue_free()
-	var t:Thread = Thread.new()
-	t.start(update_and_show_files_thread)
-	
+	call_deferred('clear_ui')
+	if update_show_thread:
+		update_show_thread.wait_to_finish()
+	update_show_thread = Thread.new()
+	update_show_thread.start(update_and_show_files_thread)
+
 func update_and_show_files_thread() -> void:
 	log_window.add_log('[connect_home]->update_and_show_files_thread')
 	var taskid:String = generate_task_id()
 	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, DIS_FILE_TYPE)
 	var f_table:Dictionary = scan_files_obj.read_db().get('all_files_dic', {})
 	var file_dic:Dictionary = sort_files_by_method_duration(f_table)
+	var timek_list:Array = file_dic.keys()
+	timek_list.sort()
+	for idx in range(len(timek_list)):
+		var timek:String = timek_list[timek_list.size() - idx -1]
+		var show_list:Array = []
+		for eachf in file_dic[timek]:
+			if search_key == '' or search_key.to_upper() in eachf.filename.to_upper():
+				show_list.append(eachf)
+			if show_list:
+				add_one_block(idx, timek, show_list)
+	show_sub_log()
+	log_window.add_log('[connect_home]->update_and_show_files_thread:thread_finish')
+
+func clear_ui() -> void:
+	for obj in vbox_l3_vbox.get_children():
+		vbox_l3_vbox.remove_child(obj)
+		obj.queue_free()
+		
+func update_ui(file_dic:Dictionary) -> void:
+	log_window.add_log('[connect_home]->update_ui')
+	for obj in vbox_l3_vbox.get_children():
+		vbox_l3_vbox.call_deferred('remove_child', obj)
+		obj.queue_free()
 	var idx:int = 0
 	for timek in file_dic:
 		add_one_block(idx, timek, file_dic[timek])
 		idx += 1
 	show_sub_log()
-	log_window.add_log('[connect_home]->update_and_show_files_thread:thread_finish')
+	
 	
 func sort_dic(indic:Dictionary) -> Dictionary:
 	for k in indic:
@@ -945,6 +994,8 @@ upload_port_input:LineEdit, download_port_input:LineEdit, usr_input:LineEdit, ps
 	save_cfg_bt.text = '登录&保存配置'
 	var login_bt:Button = hbox_l1.get_child(0)
 	login_bt.text = USR
+	_on_login_bt_pressed()
+	update_and_show_files()
 
 func _on_test_bt_pressed(login_title_label:Label, test_bt:Button, server_ip_input:LineEdit, 
 upload_port_input:LineEdit, download_port_input:LineEdit, usr_input:LineEdit, psd_input:LineEdit,
@@ -978,6 +1029,8 @@ func _on_setting_save_bt_pressed(setting_save_bt:Button) -> void:
 	SORT_METHOD, UE_SAVE_TIME])
 	save_setting()	
 	setting_save_bt.add_theme_color_override('font_color', Color(0.0, 1.0, 0.0, 1.0))
+	_on_setting_bt_pressed()
+	update_and_show_files()
 	
 func _on_dis_size_toggled(_idx:int, a:CheckBox) -> void:
 	log_window.add_log('[connect_home]->_on_dis_size_toggled')
@@ -1135,6 +1188,10 @@ func _on_filter_type_toggled(_idx:int, op:OptionButton) -> void:
 	print(DIS_TYPE_KEY_LIST)
 	update_and_show_files()
 
+func _on_search_bt_pressed(input_line:LineEdit) -> void:
+	search_key = input_line.text
+	update_and_show_files()
+	
 func date_string_to_unix_timestamp(y:String, m:String, d:String) -> int:
 	# 2. 构造初始日期字典
 	var date_dict = {
@@ -1191,8 +1248,10 @@ func deal_files() -> void:
 	_on_class_report_result('connect_home', '', 'deal_files', '', 'FINISH')
 	
 func upload_files() -> void:
-	var t = Thread.new()
-	t.start(upload_files_thread)
+	if upload_thread:
+		upload_thread.wait_to_finish()
+	upload_thread = Thread.new()
+	upload_thread.start(upload_files_thread)
 
 func upload_files_thread() -> void:
 	log_window.add_log("[connect_home]->upload_files_thread")
@@ -1253,8 +1312,10 @@ func push_files_table() -> void:
 	push_obj.upload_a_file(push_file)
 
 func update_files_table_after_upload() -> void:
-	var t:Thread = Thread.new()
-	t.start(update_files_table_after_upload_thread)
+	if update_files_aupload_thread:
+		update_files_aupload_thread.wait_to_finish()
+	update_files_aupload_thread = Thread.new()
+	update_files_aupload_thread.start(update_files_table_after_upload_thread)
 	
 func update_files_table_after_upload_thread() -> void:
 	log_window.add_log("[connect_home]->update_files_table_after_upload_thread start")
@@ -1271,6 +1332,11 @@ func update_files_table_after_upload_thread() -> void:
 	log_window.add_log("[connect_home]->update_files_table_after_upload_thread finish")
 	
 func update_files_table_after_delete() -> void:
+	if update_files_adelete_thread:
+		update_files_adelete_thread.wait_to_finish()
+	update_files_adelete_thread.start(update_files_table_after_delete_thread)
+		
+func update_files_table_after_delete_thread() -> void:
 	var taskid:String = generate_task_id()
 	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, DIS_FILE_TYPE)
 	var f_table:Dictionary = scan_files_obj.read_db().get('all_files_dic', {})
@@ -1392,21 +1458,19 @@ func show_upload_process() -> void:
 		b += upload_dic[eachf]['process']
 		c += upload_dic[eachf]['size']
 	if c != 0:
-		logs_show.call_deferred("set_text", '[%s], 上传进度%.1f'%[100 * b / c]) 
+		logs_show.call_deferred("set_text", '[%s], 上传进度%.1f'%[current_state, 100.0 * b / c]) 
 	
 func _from_tcp_transf_class(_who_i_am:String, taskid:String, req_type:String, infor:String, result:String) -> void:
 	if current_state == 'pull_files_table':## pull finish                                       ## 1.1
 		if req_type == 'download' and taskid == pull_obj.taskid and result in ['FINISH', 'ERROR7']:
-			pull_obj.tcp_destory()
-			pull_obj.queue_free()
+			clear_list.append(pull_obj)
 			show_main_log("[%s]同步文件列表完成"%current_state)
 			update_state()
 			excute_state()
 	elif current_state == 'upload_files':## upload one file finish
 		if req_type == 'upload' and taskid in upload_task_dic and result == 'FINISH':       ## 2.1
 			if taskid in upload_dic:
-				upload_task_dic[taskid].tcp_destory()
-				upload_task_dic[taskid].queue_free()
+				clear_list.append(upload_task_dic[taskid])
 			show_main_log("[%s]上传完成:%s"%[current_state, infor])
 			log_window.add_log("[connect_home]->_on_class_report_result:upload file:%s, result:%s"%[infor, result])
 			if result == 'FINISH':
@@ -1428,8 +1492,7 @@ func _from_tcp_transf_class(_who_i_am:String, taskid:String, req_type:String, in
 			excute_state()
 	elif current_state == 'push_files_table':# push finish                                      ## !2.3  !3.3
 		if req_type == 'upload' and taskid == push_obj.taskid:
-			push_obj.tcp_destory()
-			push_obj.queue_free()
+			clear_list.append(push_obj)
 			if upload_or_delete == 'upload':
 				show_main_log("[%s]上传完成"%[current_state])
 			elif upload_or_delete == 'delete':
@@ -1452,8 +1515,7 @@ func _from_tcp_transf_class(_who_i_am:String, taskid:String, req_type:String, in
 func _from_scan_class(_who_i_am:String, taskid:String, req_type:String, infor:String, result:String) -> void:
 	if current_state == 'scan_files':# scan finish
 		if taskid == scan_files_obj.taskid and result == 'FINISH':
-			scan_files_obj.scan_destory()
-			scan_files_obj.queue_free()
+			clear_list.append(scan_files_obj)
 			show_main_log('[%s]扫描完成'%current_state)
 			var scan_rt:Dictionary = JSON.parse_string(infor)
 			logs_dic.scan_rt = '扫描:%s, 新增:%s, 修改:%s, 可删除:%s'%[scan_rt.all, scan_rt.add, scan_rt.mod, scan_rt.del]
@@ -1501,7 +1563,13 @@ func _on_class_report_result(who_i_am:String, taskid:String, req_type:String, in
 	elif who_i_am == 'connect_home':
 		_from_connect_home(who_i_am, taskid, req_type, infor, result)
 		
-		
+func _process(_del)	-> void:
+	for obj in clear_list:
+		if obj != null:
+			if obj is TCP_TRANSF_C:
+				obj.disconnect('report_result', _on_class_report_result)
+			obj._destory()
+			obj = null	
 	
 	
 	
