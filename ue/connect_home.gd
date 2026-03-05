@@ -98,6 +98,7 @@ var log_window = null
 var debug_on_win:bool = false
 
 func _ready() -> void:
+	
 	$bd_color.color = Color(0.818, 0.818, 0.818, 1.0)
 	debug_on_win = true if OS.get_name() == 'Windows' else false
 	log_window = preload("res://class/log_window.tscn").instantiate()
@@ -131,11 +132,14 @@ func _ready() -> void:
 	input_theme.border_color = Color(0.5, 0.5, 0.5, 1.0)
 	input_theme.set_corner_radius_all(4)  # 圆角半径
 	
+	_test_android_plugins()
+	
 	load_cfg()
 	load_setting()
 	log_window.add_log("%s, %s, %s, %s" % [UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, DOWNLOAD_PORT])
 	build_gui()
 	update_and_show_files()
+	
 	#if current_state == 'init':
 	#	update_state()
 	#for_test()
@@ -169,7 +173,7 @@ func build_gui() -> void:
 	var hbox_l0:HBoxContainer = HBoxContainer.new()
 	hbox_l0.name = 'title'
 	var app_title_label:Label = Label.new()
-	app_title_label.text = '文件回家 V0.4.2'
+	app_title_label.text = '文件回家 V0.4.3'
 	app_title_label.size = Vector2i(win_size.x, 50)
 	app_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	app_title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1575,6 +1579,22 @@ func _process(_del)	-> void:
 			obj = null	
 	
 	
-	
+func _test_android_plugins() -> void:
+	var _plugin_name = "Iconer"
+	var _android_plugin = null
+	if Engine.has_singleton(_plugin_name):
+		_android_plugin = Engine.get_singleton(_plugin_name)
+		if _android_plugin:
+			# TODO: Update to match your plugin's API
+			_android_plugin.helloWorld()
+			var vedio_path:String = '/storage/emulated/0/DCIM/1.mp4'
+			var vedio_icon_path:String = '/storage/emulated/0/DCIM/1_mp4.png'
+			if FileAccess.file_exists(vedio_path):
+				var rt = _android_plugin.createVideoThumbnail(vedio_path, vedio_icon_path)
+				log_window.add_log("create iconer result:%s"%rt)
+			else:
+				log_window.add_log('vedio not exist!!')
+	else:
+		log_window.add_log("Couldn't find plugin " + _plugin_name)	
 	
 	
