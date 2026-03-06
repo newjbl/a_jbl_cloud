@@ -72,7 +72,7 @@ func merger_table() -> void:
 			var new_md5 = ndic['md5']
 			if server_md5 != new_md5:
 				var ctime:String = Time.get_time_string_from_system().replace(':', '_')
-				var bakfile = eachfile.replace(".%s"%[sdic['filetype']], "_bak%s.%s"%[sdic['filetype'], ctime])
+				var bakfile = eachfile.replace(".%s"%[sdic['filetype']], "_bak%s.%s"%[ctime, sdic['filetype']])
 				server_files_dic[bakfile] = sdic
 				server_files_dic[eachfile] = ndic
 				rename_files_dic[eachfile] = bakfile
@@ -95,7 +95,6 @@ func get_all_files(scaned_path:String) -> void:
 			if is_a_subdir_for_blist(current_path, scan_dir_list):
 				get_all_files(current_path)
 		else:
-			print('!!!!!!!!!!%s'%current_name)
 			if current_name in ignore_file_list:
 				log_window.add_log("[scan_class]->get_all_files:ignore file:%s"%[current_name])
 				current_name = dir.get_next()

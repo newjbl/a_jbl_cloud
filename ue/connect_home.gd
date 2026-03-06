@@ -1251,10 +1251,10 @@ func deal_files() -> void:
 		if on_server == 'no' and on_ue == 'yes':#need upload
 			if eachpath not in upload_dic['dic']:
 				upload_dic['dic'][eachpath] = {}
-			upload_dic['dic'][eachpath]['rt'] = 'not upload yet'
+			upload_dic['dic'][eachpath]['rt'] = 'notuploadyet'
 			upload_dic['dic'][eachpath]['process'] = 0
 			upload_dic['dic'][eachpath]['size'] = 0
-			upload_dic['dic'][eachpath]['size'] = 0
+			upload_dic['notuploadyet'] += 1
 		elif on_ue == 'yes' and on_server == 'yes':#need check if need delete on UE
 			if if_need_delete_ue_file(all_files_dic[eachpath], 7):
 				delete_dic[eachpath] = 'not delete yet'

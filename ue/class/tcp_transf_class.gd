@@ -598,7 +598,7 @@ func request_a_message(req_dic:Dictionary):
 	if _socket.get_status() == StreamPeerTCP.STATUS_CONNECTED:
 		var json_string:String = JSON.stringify(req_dic)
 		var json_string_utf8:PackedByteArray = json_string.to_utf8_buffer()
-		var crcv = "%08X"%[crc32_class.fCRC32(json_string.to_utf8_buffer())]
+		var crcv = "%08X"%[crc32_class.fCRC32(json_string_utf8)]
 		_socket.put_data(("|GD>SV|RQ:" + "%04X"%[json_string_utf8.size() + 8] + json_string + crcv).to_utf8_buffer())
 	else:
 		log_window.add_log('[tcp_transf_class]->request_a_message:disconnect, send message failed')
@@ -619,5 +619,6 @@ func _destory() -> void:
 		write_thread.wait_to_finish()
 	write_thread = null
 	dl_mute = null
-	crc32_class.free()
+	if crc32_class:
+		crc32_class.free()
 	queue_free()		

@@ -436,7 +436,7 @@ def review_files_on_server():
         root, dirs, files = list_all_dir_files(FILE_SAVE_DIR)
         for usr in dirs:
             files_txt_path = os.path.join(FILE_SAVE_DIR, usr, 'files.txt')
-            if not os.path.isfile(files_txt_path):
+            if not os.path.exists(files_txt_path):
                 print("[%s][%s]start review files on server:files.txt not exist!"%(datetime.now(), usr))
                 continue
             files_txt_dic = {}
@@ -449,7 +449,7 @@ def review_files_on_server():
                 ue_dir = infor.get('ue_dir', '')
                 md5 = infor.get('md5', '')
                 fin_file_path = os.path.join(FILE_SAVE_DIR, usr, ue_dir)
-                if not os.path.isfile(fin_file_path):
+                if not os.path.exists(fin_file_path):
                     print("[%s][%s]start review files on server:file(%s) not exist!"%(datetime.now(), usr, fin_file_path))
                     files_txt_dic['all_files_dic'][filepath]['status'] = 'lost'
                     if_changed = True
