@@ -83,7 +83,8 @@ var download_obj:TCP_TRANSF_C = null
 var query_obj:TCP_TRANSF_C = null
 var scan_files_obj:SCAN_C = null
 
-var upload_dic:Dictionary = {}
+var upload_dic:Dictionary = {'uploading':0, 'notuploadyet':0, 'uploaded':0, 'uploadfailed':0,
+'dic':{}}
 var delete_dic:Dictionary = {}
 var query_rt:String = ''
 
@@ -811,6 +812,7 @@ func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 		var filesize:float = filedic.get('filesize', 0) / 1024.0 / 1024.0
 		var on_ue:String = filedic.get('on_ue', 'no')
 		var on_server:String = filedic.get('on_server', 'no')
+		var on_server_status:String = filedic.get('status', 'normal')
 		var icon_path:String = ICON_DIR.path_join(filedic.get('md5', ''))
 		var texture_vbox:VBoxContainer = VBoxContainer.new()
 		texture_vbox.name = 'texture_box_%s'%[idy]
@@ -833,6 +835,17 @@ func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 			texture_on_ue.position = Vector2i(s - 30, s - 30)
 			texture_on_ue.texture = load("res://db/on_ue.png")
 			texture_rec.add_child(texture_on_ue)
+		if on_server_status != 'normal':
+			var texture_on_ue_status:TextureRect = TextureRect.new()
+			texture_on_ue_status.name = 'texture_on_ue_status'
+			texture_on_ue_status.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			texture_on_ue_status.custom_minimum_size = Vector2i(16, 16)
+			texture_on_ue_status.position = Vector2i(10, s - 30)
+			if on_server_status == 'damaged':
+				texture_on_ue_status.texture = load("res://db/file_damaged.png")
+			elif on_server_status == 'lost':
+				texture_on_ue_status.texture = load("res://db/file_lost.png")
+			texture_rec.add_child(texture_on_ue_status)
 		var texture_label:Label = Label.new()
 		texture_label.name = 'texture_label'
 		texture_label.label_settings = label_setting_font_15
@@ -910,6 +923,11 @@ func update_and_show_files_thread() -> void:
 	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, DIS_FILE_TYPE)
 	var f_table:Dictionary = scan_files_obj.read_db().get('all_files_dic', {})
 	var file_dic:Dictionary = sort_files_by_method_duration(f_table)
+	call_deferred('update_ui', file_dic)
+	log_window.add_log('[connect_home]->update_and_show_files_thread:thread_finish')
+	
+func update_ui(file_dic:Dictionary) -> void:
+	log_window.add_log('[connect_home]->update_ui')
 	var timek_list:Array = file_dic.keys()
 	timek_list.sort()
 	for idx in range(len(timek_list)):
@@ -918,28 +936,16 @@ func update_and_show_files_thread() -> void:
 		for eachf in file_dic[timek]:
 			if search_key == '' or search_key.to_upper() in eachf.filename.to_upper():
 				show_list.append(eachf)
-			if show_list:
-				add_one_block(idx, timek, show_list)
+		if show_list:
+			add_one_block(idx, timek, show_list)
 	show_sub_log()
-	log_window.add_log('[connect_home]->update_and_show_files_thread:thread_finish')
 
 func clear_ui() -> void:
+	log_window.add_log('[connect_home]->clear_ui')
 	for obj in vbox_l3_vbox.get_children():
 		vbox_l3_vbox.remove_child(obj)
 		obj.queue_free()
 		
-func update_ui(file_dic:Dictionary) -> void:
-	log_window.add_log('[connect_home]->update_ui')
-	for obj in vbox_l3_vbox.get_children():
-		vbox_l3_vbox.call_deferred('remove_child', obj)
-		obj.queue_free()
-	var idx:int = 0
-	for timek in file_dic:
-		add_one_block(idx, timek, file_dic[timek])
-		idx += 1
-	show_sub_log()
-	
-	
 func sort_dic(indic:Dictionary) -> Dictionary:
 	for k in indic:
 		var files:Array = indic[k]
@@ -1243,11 +1249,12 @@ func deal_files() -> void:
 		var on_server = all_files_dic[eachpath]['on_server']
 		var on_ue = all_files_dic[eachpath]['on_ue']
 		if on_server == 'no' and on_ue == 'yes':#need upload
-			if eachpath not in upload_dic:
-				upload_dic[eachpath] = {}
-			upload_dic[eachpath]['rt'] = 'not upload yet'
-			upload_dic[eachpath]['process'] = 0
-			upload_dic[eachpath]['size'] = 0
+			if eachpath not in upload_dic['dic']:
+				upload_dic['dic'][eachpath] = {}
+			upload_dic['dic'][eachpath]['rt'] = 'not upload yet'
+			upload_dic['dic'][eachpath]['process'] = 0
+			upload_dic['dic'][eachpath]['size'] = 0
+			upload_dic['dic'][eachpath]['size'] = 0
 		elif on_ue == 'yes' and on_server == 'yes':#need check if need delete on UE
 			if if_need_delete_ue_file(all_files_dic[eachpath], 7):
 				delete_dic[eachpath] = 'not delete yet'
@@ -1261,13 +1268,25 @@ func upload_files() -> void:
 
 func upload_files_thread() -> void:
 	log_window.add_log("[connect_home]->upload_files_thread")
-	if upload_dic == {}:
+	if upload_dic['notuploadyet'] == 0:
 		_on_class_report_result('connect_home', '', 'upload_files', '', 'FINISH')
-	for filepath in upload_dic:
-		logs_dic.message = '开始上传:%s'%filepath
-		show_sub_log()
-		log_window.add_log("[connect_home]->upload_files_thread:will upload:%s"%filepath)
-		upload_a_file(filepath)
+	while upload_dic['notuploadyet'] > 0:
+		var need_upload_cnt:int = max(0, 5 - upload_dic['uploading'])
+		if need_upload_cnt <= 0:
+			continue
+		for filepath in upload_dic['dic']:
+			if upload_dic['dic'][filepath]['rt'] != 'notuploadyet':
+				continue
+			upload_dic['dic'][filepath]['rt'] = 'uploading'
+			upload_dic['uploading'] += 1
+			upload_dic['notuploadyet'] -= 1
+			logs_dic.message = '开始上传:%s'%filepath
+			show_sub_log()
+			log_window.add_log("[connect_home]->upload_files_thread:will upload:%s"%filepath)
+			upload_a_file(filepath)
+			need_upload_cnt -= 1
+			if need_upload_cnt <= 0:
+				break
 	log_window.add_log("[connect_home]->upload_files_thread:thread_finish")
 
 func delete_files() -> void:
@@ -1329,8 +1348,8 @@ func update_files_table_after_upload_thread() -> void:
 	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, DIS_FILE_TYPE)
 	var f_table:Dictionary = scan_files_obj.read_db().get('all_files_dic', {})
 	var d_table:Dictionary = scan_files_obj.read_db().get('rename_files_dic', {})
-	for eachfile in upload_dic:
-		if upload_dic[eachfile]['rt'] != 'uploaded':
+	for eachfile in upload_dic['dic']:
+		if upload_dic['dic'][eachfile]['rt'] != 'uploaded':
 			continue
 		if eachfile in f_table:
 			f_table[eachfile]['on_server'] = 'yes'
@@ -1461,11 +1480,11 @@ func show_main_log(msg:String) -> void:
 func show_upload_process() -> void:
 	var b:int = 0
 	var c:int = 0
-	for eachf in upload_dic:
-		b += upload_dic[eachf]['process']
-		c += upload_dic[eachf]['size']
+	for eachf in upload_dic['dic']:
+		b += upload_dic['dic'][eachf]['process']
+		c += upload_dic['dic'][eachf]['size']
 	if c != 0:
-		logs_show.call_deferred("set_text", '[%s], 上传进度%.1f'%[current_state, 100.0 * b / c]) 
+		logs_show.call_deferred("set_text", '[%s], 上传进度%.1f%%'%[current_state, 100.0 * b / c]) 
 	
 func _from_tcp_transf_class(_who_i_am:String, taskid:String, req_type:String, infor:String, result:String) -> void:
 	if current_state == 'pull_files_table':## pull finish                                       ## 1.1
@@ -1476,19 +1495,20 @@ func _from_tcp_transf_class(_who_i_am:String, taskid:String, req_type:String, in
 			excute_state()
 	elif current_state == 'upload_files':## upload one file finish
 		if req_type == 'upload' and taskid in upload_task_dic and result == 'FINISH':       ## 2.1
-			if taskid in upload_dic:
+			if taskid in upload_task_dic:
 				clear_list.append(upload_task_dic[taskid])
 			show_main_log("[%s]上传完成:%s"%[current_state, infor])
 			log_window.add_log("[connect_home]->_on_class_report_result:upload file:%s, result:%s"%[infor, result])
 			if result == 'FINISH':
-				upload_dic[infor]['rt'] = 'uploaded'
-				upload_dic[infor]['process'] = upload_dic[infor]['size']
-			var all_upload_finish:bool = true
-			for eachf in upload_dic:
-				if upload_dic[eachf]['rt'] == 'not upload yet':
-					all_upload_finish = false
-					break
-			if all_upload_finish:
+				upload_dic['dic'][infor]['rt'] = 'uploaded'
+				upload_dic['dic'][infor]['process'] = upload_dic['dic'][infor]['size']
+				upload_dic['uploaded'] += 1
+			else:
+				upload_dic['dic'][infor]['rt'] = 'uploadedfailed'
+				upload_dic['dic'][infor]['process'] = upload_dic['dic'][infor]['size']
+				upload_dic['uploadedfailed'] += 1
+			upload_dic['uploading'] -= 1
+			if upload_dic['notuploadyet'] + upload_dic['uploading'] == 0:
 				show_upload_process()
 				_on_class_report_result('connect_home', '', 'upload_files', '', 'FINISH')
 				
@@ -1511,9 +1531,9 @@ func _from_tcp_transf_class(_who_i_am:String, taskid:String, req_type:String, in
 	elif result == 'PROCESS':
 		var a:Array = infor.split(';')
 		var filepath:String = UE_ROOT_DIR.path_join(a[1])
-		if filepath in upload_dic:
-			upload_dic[filepath]['process'] = a[0].to_int()
-			upload_dic[filepath]['size'] = a[2].to_int()
+		if filepath in upload_dic['dic']:
+			upload_dic['dic'][filepath]['process'] = a[0].to_int()
+			upload_dic['dic'][filepath]['size'] = a[2].to_int()
 		show_upload_process()
 	elif result == 'FAILED':
 		show_main_log('[%s], 失败'%[current_state])
@@ -1541,14 +1561,8 @@ func _from_connect_home(_who_i_am:String, _taskid:String, req_type:String, infor
 	elif current_state == 'upload_files':# upload all files finish                              ## 2.2
 		if req_type == 'upload_files' and result == 'FINISH':
 			update_files_table_after_upload()
-			var success_cnt:int = 0
-			var failed_cnt:int = 0
-			for eachf in upload_dic:
-				if upload_dic[eachf]['rt'] == 'uploaded':
-					success_cnt += 1
-				else:
-					failed_cnt += 1
-			logs_dic.upload_rt = '应上传:%s个, 上传成功:%s个, 上传失败:%s个'%[upload_dic.keys().size(), success_cnt, failed_cnt]
+			logs_dic.upload_rt = '应上传:%s个, 上传成功:%s个, 上传失败:%s个'%[
+				upload_dic.keys().size(), upload_dic['uploaded'], upload_dic['uploadfailed']]
 			current_state = 'delete_files'## force to delete_files
 			update_state()
 			excute_state()
@@ -1573,11 +1587,8 @@ func _on_class_report_result(who_i_am:String, taskid:String, req_type:String, in
 func _process(_del)	-> void:
 	for obj in clear_list:
 		if obj != null:
-			if obj is TCP_TRANSF_C:
-				obj.disconnect('report_result', _on_class_report_result)
 			obj._destory()
 			obj = null	
-	
 	
 func _test_android_plugins() -> void:
 	var _plugin_name = "Iconer"

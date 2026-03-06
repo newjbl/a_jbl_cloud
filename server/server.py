@@ -37,6 +37,10 @@ LOGIN_DIC = {}
 Path(FILE_SAVE_DIR).mkdir(parents=True, exist_ok=True)
 debug_ctl_flag = True
 
+def list_all_dir_files(path):
+    for root, dirs, files in os.walk(path):
+        return root, dirs, files
+
 def caculate_crc32(data):
     if isinstance(data, str):
         data = data.encode('utf-8')
@@ -426,10 +430,45 @@ def start_godot_download_server():
         print('======================================== new request =========================================')
         threading.Thread(target=handle_ue_download, args=(client_socket, addr), daemon=True).start()
 
+def review_files_on_server():
+    while True:
+        print("[%s]start review files on server"%(datetime.now()))
+        root, dirs, files = list_all_dir_files(FILE_SAVE_DIR)
+        for usr in dirs:
+            files_txt_path = os.path.join(FILE_SAVE_DIR, usr, 'files.txt')
+            if not os.path.isfile(files_txt_path):
+                print("[%s][%s]start review files on server:files.txt not exist!"%(datetime.now(), usr))
+                continue
+            files_txt_dic = {}
+            with open(files_txt_path, 'r', encoding='utf-8') as f:
+                files_txt = f.read()
+                files_txt_dic = json.loads(files_txt)
+            all_files_dic = files_txt_dic.get('all_files_dic', {})
+            if_changed = False
+            for filepath, infor in all_files_dic.items():
+                ue_dir = infor.get('ue_dir', '')
+                md5 = infor.get('md5', '')
+                fin_file_path = os.path.join(FILE_SAVE_DIR, usr, ue_dir)
+                if not os.path.isfile(fin_file_path):
+                    print("[%s][%s]start review files on server:file(%s) not exist!"%(datetime.now(), usr, fin_file_path))
+                    files_txt_dic['all_files_dic'][filepath]['status'] = 'lost'
+                    if_changed = True
+                else:
+                    md5_check = caculate_md5(fin_file_path)
+                    if md5_check != md5:
+                        print("[%s][%s]start review files on server:file(%s) md5 check failed(md5=%s, md5_check=%s)!"%(datetime.now(), usr, fin_file_path, md5, md5_check))
+                        files_txt_dic['all_files_dic'][filepath]['status'] = 'damaged'
+                        if_changed = True
+            if if_changed:
+                with open(files_txt_path, 'w', encoding='utf-8') as f:
+                    f.write(json.dumps(files_txt_dic, indent=2, ensure_ascii=False))
+            time.sleep(60 * 60 * 24)
+
 if __name__ == "__main__":
     try:
         threading.Thread(target=start_godot_upload_server, daemon=True).start()
         threading.Thread(target=start_godot_download_server, daemon=True).start()
+        threading.Thread(target=review_files_on_server, daemon=True).start()
         while True:
             time.sleep(1)
     except:

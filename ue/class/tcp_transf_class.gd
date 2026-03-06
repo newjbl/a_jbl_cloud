@@ -596,9 +596,10 @@ func request_upload(filepath) -> void:
 func request_a_message(req_dic:Dictionary):
 	log_window.add_log("[tcp_transf_class]->request_a_message:|GD>SV|RQ:%s is %s"%[_socket.get_status(), req_dic])
 	if _socket.get_status() == StreamPeerTCP.STATUS_CONNECTED:
-		var json_string = JSON.stringify(req_dic)
+		var json_string:String = JSON.stringify(req_dic)
+		var json_string_utf8:PackedByteArray = json_string.to_utf8_buffer()
 		var crcv = "%08X"%[crc32_class.fCRC32(json_string.to_utf8_buffer())]
-		_socket.put_data(("|GD>SV|RQ:" + "%04X"%[len(json_string) + 8] + json_string + crcv).to_utf8_buffer())
+		_socket.put_data(("|GD>SV|RQ:" + "%04X"%[json_string_utf8.size() + 8] + json_string + crcv).to_utf8_buffer())
 	else:
 		log_window.add_log('[tcp_transf_class]->request_a_message:disconnect, send message failed')
 		

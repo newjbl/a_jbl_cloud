@@ -5,6 +5,7 @@ var db_path:String = "res://db/files.txt"
 var icon_dir:String = "res://db/icon/"
 var ignore_file_list:Array = ['files.txt']
 var ignore_ext_list:Array = ['dtmp']
+var ue_root_dir:String = ''
 var scan_ext_list:Array = []
 var scan_dir_list:Array = []
 var scan_thread:Thread = null
@@ -15,10 +16,11 @@ var log_window = null
 var scan_rt:Dictionary = {'all':0, 'add':0, 'mod':0, 'del':0}
 signal scan_finished(who_i_am:String, taskid:String, req_type:String, infor:String, result:String)
 
-func _init(log_win, _taskid:String, db:String, ue_root_dir:String, dirdic:Dictionary, dis_files_type:Dictionary) -> void:
+func _init(log_win, _taskid:String, db:String, _ue_root_dir:String, dirdic:Dictionary, dis_files_type:Dictionary) -> void:
 	log_window = log_win
 	taskid = _taskid
 	db_path = db
+	ue_root_dir = _ue_root_dir
 	for eachdir in dirdic:
 		if dirdic[eachdir] == 'yes':
 			scan_dir_list.append(ue_root_dir.path_join(eachdir))
@@ -69,7 +71,8 @@ func merger_table() -> void:
 			var server_md5 = sdic['md5']
 			var new_md5 = ndic['md5']
 			if server_md5 != new_md5:
-				var bakfile = eachfile.replace(".%s"%[sdic['filetype']], "_bak.%s"%[sdic['filetype']])
+				var ctime:String = Time.get_time_string_from_system().replace(':', '_')
+				var bakfile = eachfile.replace(".%s"%[sdic['filetype']], "_bak%s.%s"%[sdic['filetype'], ctime])
 				server_files_dic[bakfile] = sdic
 				server_files_dic[eachfile] = ndic
 				rename_files_dic[eachfile] = bakfile
@@ -109,7 +112,8 @@ func get_all_files(scaned_path:String) -> void:
 			if current_path not in new_files_dic:
 				new_files_dic[current_path] = {'md5': md5, 'filename': current_name,
 				'filesize': filesize, 'modtime': modtime, 'filetype': filetype, 'on_server': 'no', 
-				'on_ue': 'yes', 'res1':'', 'res2':'', 'res3':''}
+				'on_ue': 'yes', 'ue_dir':current_path.replace(ue_root_dir + '/', ''), 'status':'normal', 
+				'res3':''}
 		current_name = dir.get_next()
 	dir.list_dir_end()
 	log_window.add_log('[scan_class]->get_all_files:scan finish:%s'%[scaned_path])
