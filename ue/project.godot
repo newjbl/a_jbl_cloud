@@ -21,6 +21,10 @@ window/size/viewport_width=1080
 window/size/viewport_height=2400
 window/handheld/orientation=1
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/Iconer/plugin.cfg")
+
 [physics]
 
 3d/physics_engine="Jolt Physics"
