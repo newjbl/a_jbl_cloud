@@ -1,12 +1,13 @@
 extends Node
 class_name SCAN_C
 
-var db_path:String = "res://db/files.txt"
-var icon_dir:String = "res://db/icon/"
+var db_path:String = "user://db/files.txt"
+var icon_dir:String = "user://db/icon/"
 var ignore_file_list:Array = ['files.txt']
 var ignore_ext_list:Array = ['dtmp']
 var ue_root_dir:String = ''
 var scan_ext_list:Array = []
+var ext_type_dic:Dictionary = {}
 var scan_dir_list:Array = []
 var scan_thread:Thread = null
 var scan_thread_running:bool = false
@@ -14,13 +15,18 @@ var taskid:String = ''
 var new_files_dic:Dictionary = {}
 var log_window = null
 var scan_rt:Dictionary = {'all':0, 'add':0, 'mod':0, 'del':0}
+var iconer_c:ICONER_C = null
 signal scan_finished(who_i_am:String, taskid:String, req_type:String, infor:String, result:String)
 
-func _init(log_win, _taskid:String, db:String, _ue_root_dir:String, dirdic:Dictionary, dis_files_type:Dictionary) -> void:
+func _init(log_win, _taskid:String, db:String, _ue_root_dir:String, dirdic:Dictionary, dis_files_type:Dictionary,
+_ext_type_dic:Dictionary, _icon_dir:String) -> void:
 	log_window = log_win
 	taskid = _taskid
 	db_path = db
 	ue_root_dir = _ue_root_dir
+	ext_type_dic = _ext_type_dic
+	icon_dir = _icon_dir
+	iconer_c = ICONER_C.new(log_window)
 	for eachdir in dirdic:
 		if dirdic[eachdir] == 'yes':
 			scan_dir_list.append(ue_root_dir.path_join(eachdir))
@@ -56,6 +62,7 @@ func merger_table() -> void:
 		#log_window.add_log('[scan_class]->merger_table:remove %s'%[eachfile])
 		#server_files_dic.erase(eachfile)
 	scan_rt.all = new_files_dic.keys().size()
+	var icon_file_dic:Dictionary = {}
 	for eachfile in new_files_dic:
 		var sdic = server_files_dic.get(eachfile, {})
 		var ndic = new_files_dic[eachfile]
@@ -64,8 +71,6 @@ func merger_table() -> void:
 			log_window.add_log("[scan_class]->merger_table:add %s"%[eachfile])
 			server_files_dic[eachfile] = ndic
 			scan_rt.add = scan_rt.add + 1
-			### create icon
-			log_window.add_log('[scan_class]->merger_table:create icon finish:%s'%[eachfile])
 		##mod
 		else:
 			var server_md5 = sdic['md5']
@@ -78,6 +83,14 @@ func merger_table() -> void:
 				rename_files_dic[eachfile] = bakfile
 				scan_rt.mod = scan_rt.mod + 1
 				log_window.add_log("mod:%s > %s"%[eachfile, bakfile])
+	var iconer_file_dic:Dictionary = {}
+	for eachfile in server_files_dic:
+		var ext:String = server_files_dic[eachfile]['filetype']
+		var ft:String = ext_type_dic.get(ext, 'Others')
+		if ft not in iconer_file_dic:
+			iconer_file_dic[ft] = []
+		iconer_file_dic[ft].append(eachfile)
+	iconer_c.create_icon(iconer_file_dic, ProjectSettings.globalize_path(icon_dir), 256)
 	write_db({"all_files_dic": server_files_dic, "rename_files_dic": rename_files_dic})
 	
 func get_all_files(scaned_path:String) -> void:
@@ -85,7 +98,7 @@ func get_all_files(scaned_path:String) -> void:
 	emit_signal("scan_finished", 'scan_class', taskid, 'scan', scaned_path, 'START')
 	var dir:DirAccess = DirAccess.open(scaned_path)
 	if dir == null:
-		log_window.add_log("open dir failed:", scaned_path, " reason:", DirAccess.get_open_error())
+		log_window.add_log("open dir failed:%s, reason:%s"%[scaned_path, DirAccess.get_open_error()])
 		return
 	dir.list_dir_begin()
 	var current_name:String = dir.get_next()
@@ -103,6 +116,9 @@ func get_all_files(scaned_path:String) -> void:
 			
 			if filetype not in scan_ext_list:
 				log_window.add_log("[scan_class]->get_all_files:ignore ext file:%s"%[current_name])
+				current_name = dir.get_next()
+				continue
+			if not is_a_subdir_for_blist(current_path, scan_dir_list):
 				current_name = dir.get_next()
 				continue
 			var md5:String = FileAccess.get_md5(current_path)
@@ -132,12 +148,21 @@ func is_a_subdir_for_blist(a:String, blist:Array) -> bool:
 	
 func _init_db() -> bool:
 	if not FileAccess.file_exists(db_path):
+		var dir_path = db_path.get_base_dir()
+		if dir_path != "":
+			if not DirAccess.dir_exists_absolute(dir_path):
+				var err = DirAccess.make_dir_recursive_absolute(dir_path)
+				if err != OK:
+					log_window.add_log("[scan_class]->write_db:make dir failed:%s"%err)
+					return false
 		var f = FileAccess.open(db_path, FileAccess.WRITE)
 		if f:
 			var _rt = f.store_string('{}')
 			f.close()
 			return true
 		else:
+			var err = FileAccess.get_open_error() 
+			log_window.add_log("[scan_class]->write_db:open file failed:%s!!"%err)
 			return false
 	return true
 	
@@ -148,6 +173,9 @@ func write_db(indic:Dictionary) -> bool:
 		var r = f.store_string(instr)
 		f.close()
 		return r
+	else:
+		var err = FileAccess.get_open_error() 
+		log_window.add_log("[scan_class]->write_db:open file failed:%s!!"%err)
 	return false
 func read_db() -> Dictionary:
 	var f = FileAccess.open(db_path, FileAccess.READ_WRITE)
@@ -158,6 +186,9 @@ func read_db() -> Dictionary:
 		var err = jsoner.parse(outstr)
 		if err == Error.OK:
 			return jsoner.data
+	else:
+		var err = FileAccess.get_open_error() 
+		log_window.add_log("[scan_class]->read_db:open file failed:%s"%err)
 	return {}
 
 func _on_scan_status_changed(who_i_am:String, _taskid:String, req_type:String, infor:String, result:String) -> void:

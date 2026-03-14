@@ -200,6 +200,8 @@ func upload_data(filepath, offset) -> void:
 		var idxx:PackedByteArray = ("%06X"%[idx]).to_utf8_buffer()
 		var crc:PackedByteArray = ("%08X"%[crc32_class.fCRC32(block)]).to_utf8_buffer()
 		var frame:PackedByteArray = dat_format + block_len + idxx + block + crc
+		#print(idxx.get_string_from_utf8()+block.get_string_from_utf8()+crc.get_string_from_utf8())
+		print('%s:%s'%[idxx, crc])
 		_socket.put_data(frame)
 		offset += block.size()
 		idx += 1

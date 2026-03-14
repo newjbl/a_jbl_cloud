@@ -3,7 +3,7 @@ extends Node2D
 var CFG_PATH:String = "user://db/cfg.ini"
 var SETTING_PATH:String = "user://db/setting.ini"
 var ICON_DIR:String = "user://db/icon/"
-var UE_ROOT_DIR:String = r'/storage/emulated/0'
+var UE_ROOT_DIR:String = r'/storage/emulated/0/'
 var SCAN_DIR_DIC:Dictionary = {'DCIM':'yes', 'Pictures':'yes', 'Download':'yes'}
 var SERVER_IP:String = ''
 var UPLOAD_PORT:int = 6666
@@ -16,9 +16,14 @@ var DIS_DURATION:Array = [0, 4290604800]
 var SORT_METHOD:String = 'NAME_AZ'# NAME_ZA, TIME_AZ, TIME_ZA, SIZE_AZ, SIZE_ZA
 var UE_SAVE_TIME:int = 30
 var DIS_FILE_TYPE:Dictionary = {'Picture':{'JPG':'yes', 'JPEG':'yes', 'PNG':'yes', 'GIF':'yes', 'BMP':'yes', 'HEIC':'yes', 'WEBP':'yes', 'TIFF':'yes'},
-'Vedio': {'MP4':'yes', '3GP':'yes', '3G2':'yes', 'AVI':'yes', 'MOV':'yes', 'MKV':'yes', 'M4V':'yes', 'WMV':'yes', 'ASF':'yes', 'FLV':'yes'},
+'Video': {'MP4':'yes', '3GP':'yes', '3G2':'yes', 'AVI':'yes', 'MOV':'yes', 'MKV':'yes', 'M4V':'yes', 'WMV':'yes', 'ASF':'yes', 'FLV':'yes'},
 'Music': {'MP3':'yes', 'WMA':'yes', 'OGG':'yes', 'FLAC':'yes', 'APE':'yes', 'WAV':'yes', 'AAC':'yes', 'M4A':'yes', 'AMR':'yes', '3GPP':'yes', 'MKA':'yes', 'AC3':'yes', 'DTS':'yes'},
-'Others': {}}
+'Others': {'PDF':'yes', 'DOC':'yes', 'DOCX':'yes', 'APK':'yes'}}
+var EXT_TYPE_DIC:Dictionary = {'JPG':'Picture', 'JPEG':'Picture', 'PNG':'Picture', 'GIF':'Picture', 'BMP':'Picture', 'HEIC':'Picture', 'WEBP':'Picture', 'TIFF':'Picture',
+'MP4':'Video', '3GP':'Video', '3G2':'Video', 'AVI':'Video', 'MOV':'Video', 'MKV':'Video', 'M4V':'Video', 'WMV':'Video', 'ASF':'Video', 'FLV':'Video',
+'MP3':'Music', 'WMA':'Music', 'OGG':'Music', 'FLAC':'Music', 'APE':'Music', 'WAV':'Music', 'AAC':'Music', 'M4A':'Music', 'AMR':'Music', '3GPP':'Music', 'MKA':'Music', 'AC3':'Music', 'DTS':'Music',
+'PDF':'Document', 'DOC':'Document', 'DOCX':'Document', 'TXT':'Document', 'INI':'Document',
+'APK':'Apk'}
 var DIS_TYPE_KEY_LIST:Array = ['Picture']
 var file_type_line_max_cnt:int = 6
 var DEFAULT_FONT_SIZE:int = 60
@@ -99,12 +104,21 @@ var log_window = null
 var debug_on_win:bool = false
 
 func _ready() -> void:
-	
+	if OS.get_name() == 'Android':
+		OS.request_permissions()
+		var r:String = "android.permission.WRITE_EXTERNAL_STORAGE"
+		var p:PackedStringArray = OS.get_granted_permissions()
+		print(p)
 	$bd_color.color = Color(0.818, 0.818, 0.818, 1.0)
 	debug_on_win = true if OS.get_name() == 'Windows' else false
 	log_window = preload("res://class/log_window.tscn").instantiate()
 	add_child(log_window)
-	print(ProjectSettings.globalize_path("user://"))
+	log_window.add_log("ue cfg dir is: %s"%ProjectSettings.globalize_path("user://"))
+	log_window.add_log("ue scan root dir is: %s"%ProjectSettings.globalize_path(UE_ROOT_DIR))
+	if not DirAccess.dir_exists_absolute("user://db//"):
+		DirAccess.make_dir_recursive_absolute("user://db//")
+	if not DirAccess.dir_exists_absolute("user://db/icon//"):
+		DirAccess.make_dir_recursive_absolute("user://db/icon//")
 	label_setting_font_60 = LabelSettings.new()
 	label_setting_font_60.font_size = 60
 	label_setting_font_60.font_color = Color(0.0, 0.0, 0.0, 1.0)
@@ -132,8 +146,6 @@ func _ready() -> void:
 	input_theme.border_width_bottom = 1
 	input_theme.border_color = Color(0.5, 0.5, 0.5, 1.0)
 	input_theme.set_corner_radius_all(4)  # 圆角半径
-	
-	_test_android_plugins()
 	
 	load_cfg()
 	load_setting()
@@ -386,17 +398,25 @@ func build_gui() -> void:
 	
 	var save_cfg_bt:Button = Button.new()
 	save_cfg_bt.name = 'save_cfg_bt'
-	save_cfg_bt.text = '登录&保存信息'
+	save_cfg_bt.text = '登录&保存'
 	save_cfg_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	save_cfg_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	save_cfg_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
 	save_cfg_bt.connect("pressed", _on_save_cfg_bt_pressed.bind(login_tiltle_label, save_cfg_bt,
 	server_ip_input, upload_port_input, download_port_input, usr_input, psd_input))
 	hbox_login_l7.add_child(save_cfg_bt)
+	var clear_cfg_bt:Button = Button.new()
+	clear_cfg_bt.name = 'clear_cfg_bt'
+	clear_cfg_bt.text = '删除配置文件'
+	clear_cfg_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	clear_cfg_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	clear_cfg_bt.add_theme_color_override('font_color', Color(1.0, 0.0, 0.0, 1.0))
+	clear_cfg_bt.connect("pressed", _on_delete_cfg_bt_pressed)
+	hbox_login_l7.add_child(clear_cfg_bt)
 	var test_bt:Button = Button.new()
 	test_bt.name = 'test_bt'
 	test_bt.text = '测试连接'
 	test_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	test_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	test_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
 	test_bt.connect("pressed", _on_test_bt_pressed.bind(login_tiltle_label, test_bt,
 	server_ip_input, upload_port_input, download_port_input, usr_input, psd_input))
 	hbox_login_l7.add_child(test_bt)
@@ -461,10 +481,18 @@ func build_gui() -> void:
 	var setting_save_bt:Button = Button.new()
 	setting_save_bt.name = 'setting_save_bt'
 	setting_save_bt.text = '保存配置'
-	setting_save_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
+	setting_save_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
 	setting_save_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	setting_save_bt.connect("pressed", _on_setting_save_bt_pressed.bind(setting_save_bt))
 	hbox_setting_l1.add_child(setting_save_bt)
+	
+	var setting_delete_bt:Button = Button.new()
+	setting_delete_bt.name = 'setting_delete_bt'
+	setting_delete_bt.text = '删除配置文件'
+	setting_delete_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	setting_delete_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	setting_delete_bt.connect("pressed", _on_setting_delete_bt_pressed)
+	hbox_setting_l1.add_child(setting_delete_bt)
 	
 	var ue_root_dir_label:Label = Label.new()
 	ue_root_dir_label.name = 'ue_root_dir_label'
@@ -692,7 +720,7 @@ func build_gui() -> void:
 	hbox_setting_l5.add_child(ue_save_duration_input)
 	
 	var rl:Dictionary = {'Picture': ['图片类型', hbox_setting_l6],
-	'Vedio': ['视频类型', hbox_setting_l6_1], 
+	'Video': ['视频类型', hbox_setting_l6_1], 
 	'Music': ['音频类型', hbox_setting_l6_2], 
 	'Others': ['其他类型', hbox_setting_l6_3], }
 	for filetype in DIS_FILE_TYPE:
@@ -920,7 +948,8 @@ func update_and_show_files() -> void:
 func update_and_show_files_thread() -> void:
 	log_window.add_log('[connect_home]->update_and_show_files_thread')
 	var taskid:String = generate_task_id()
-	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, DIS_FILE_TYPE)
+	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('av').path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
+	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
 	var f_table:Dictionary = scan_files_obj.read_db().get('all_files_dic', {})
 	var file_dic:Dictionary = sort_files_by_method_duration(f_table)
 	call_deferred('update_ui', file_dic)
@@ -992,7 +1021,7 @@ func _on_setting_bt_pressed() -> void:
 	log_window.add_log('[connect_home]->_on_setting_bt_pressed')
 	vbox_l1_2_setting.visible = not vbox_l1_2_setting.visible
 	_force_win()
-
+	
 func _on_save_cfg_bt_pressed(_login_tiltle_label:Label, save_cfg_bt:Button, server_ip_input:LineEdit, 
 upload_port_input:LineEdit, download_port_input:LineEdit, usr_input:LineEdit, psd_input:LineEdit) -> void:
 	log_window.add_log('[connect_home]->_on_save_cfg_bt_pressed')
@@ -1009,6 +1038,11 @@ upload_port_input:LineEdit, download_port_input:LineEdit, usr_input:LineEdit, ps
 	_on_login_bt_pressed()
 	update_and_show_files()
 
+func _on_delete_cfg_bt_pressed() -> void:
+	log_window.add_log('[connect_home]->_on_delete_cfg_bt_pressed')
+	if FileAccess.file_exists(CFG_PATH):
+		DirAccess.remove_absolute(CFG_PATH)
+	
 func _on_test_bt_pressed(login_title_label:Label, test_bt:Button, server_ip_input:LineEdit, 
 upload_port_input:LineEdit, download_port_input:LineEdit, usr_input:LineEdit, psd_input:LineEdit,
 poolmax=10, loopmax=3):
@@ -1043,6 +1077,11 @@ func _on_setting_save_bt_pressed(setting_save_bt:Button) -> void:
 	setting_save_bt.add_theme_color_override('font_color', Color(0.0, 1.0, 0.0, 1.0))
 	_on_setting_bt_pressed()
 	update_and_show_files()
+
+func _on_setting_delete_bt_pressed() -> void:
+	log_window.add_log('[connect_home]->_on_setting_delete_bt_pressed')
+	if FileAccess.file_exists(SETTING_PATH):
+		DirAccess.remove_absolute(SETTING_PATH)
 	
 func _on_dis_size_toggled(_idx:int, a:CheckBox) -> void:
 	log_window.add_log('[connect_home]->_on_dis_size_toggled')
@@ -1188,15 +1227,15 @@ func _on_filter_type_toggled(_idx:int, op:OptionButton) -> void:
 	if a == "图片":
 		DIS_TYPE_KEY_LIST = ['Picture']
 	elif a == "视频":
-		DIS_TYPE_KEY_LIST = ['Vedio']
+		DIS_TYPE_KEY_LIST = ['Video']
 	elif a == "图片和视频":
-		DIS_TYPE_KEY_LIST = ['Picture', 'Vedio']
+		DIS_TYPE_KEY_LIST = ['Picture', 'Video']
 	elif a == "音频":
 		DIS_TYPE_KEY_LIST = ['Music']
 	elif a == "其他":
 		DIS_TYPE_KEY_LIST = ['Others']
 	elif a == "所有":
-		DIS_TYPE_KEY_LIST = ['Picture', 'Vedio', 'Music', 'Others']
+		DIS_TYPE_KEY_LIST = ['Picture', 'Video', 'Music', 'Others']
 	print(DIS_TYPE_KEY_LIST)
 	update_and_show_files()
 
@@ -1204,6 +1243,7 @@ func _on_search_bt_pressed(input_line:LineEdit) -> void:
 	search_key = input_line.text
 	update_and_show_files()
 	
+
 func date_string_to_unix_timestamp(y:String, m:String, d:String) -> int:
 	# 2. 构造初始日期字典
 	var date_dict = {
@@ -1242,7 +1282,8 @@ func query_files() -> void:
 	
 func deal_files() -> void:
 	var taskid:String = generate_task_id()
-	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, DIS_FILE_TYPE)
+	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
+	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
 	var files_dic:Dictionary = scan_files_obj.read_db()
 	var all_files_dic:Dictionary = files_dic.get("all_files_dic", {})
 	for eachpath in all_files_dic:
@@ -1345,7 +1386,8 @@ func update_files_table_after_upload() -> void:
 func update_files_table_after_upload_thread() -> void:
 	log_window.add_log("[connect_home]->update_files_table_after_upload_thread start")
 	var taskid:String = generate_task_id()
-	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, DIS_FILE_TYPE)
+	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
+	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
 	var f_table:Dictionary = scan_files_obj.read_db().get('all_files_dic', {})
 	var d_table:Dictionary = scan_files_obj.read_db().get('rename_files_dic', {})
 	for eachfile in upload_dic['dic']:
@@ -1364,7 +1406,8 @@ func update_files_table_after_delete() -> void:
 		
 func update_files_table_after_delete_thread() -> void:
 	var taskid:String = generate_task_id()
-	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, DIS_FILE_TYPE)
+	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
+	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
 	var f_table:Dictionary = scan_files_obj.read_db().get('all_files_dic', {})
 	var d_table:Dictionary = scan_files_obj.read_db().get('rename_files_dic', {})
 	for eachfile in delete_dic:
@@ -1377,7 +1420,8 @@ func update_files_table_after_delete_thread() -> void:
 func scan_files() -> void:
 	log_window.add_log("[connect_home]->scan_files")
 	var taskid:String = generate_task_id()
-	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, DIS_FILE_TYPE)
+	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
+	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
 	scan_files_obj.connect("scan_finished", _on_class_report_result)
 	scan_files_obj.scan_a_dir(UE_ROOT_DIR)
 	
@@ -1589,23 +1633,3 @@ func _process(_del)	-> void:
 		if obj != null:
 			obj._destory()
 			obj = null	
-	
-func _test_android_plugins() -> void:
-	var _plugin_name = "Iconer"
-	var _android_plugin = null
-	if Engine.has_singleton(_plugin_name):
-		_android_plugin = Engine.get_singleton(_plugin_name)
-		if _android_plugin:
-			# TODO: Update to match your plugin's API
-			_android_plugin.helloWorld()
-			var vedio_path:String = '/storage/emulated/0/DCIM/1.mp4'
-			var vedio_icon_path:String = '/storage/emulated/0/DCIM/1_mp4.png'
-			if FileAccess.file_exists(vedio_path):
-				var rt = _android_plugin.createVideoThumbnail(vedio_path, vedio_icon_path)
-				log_window.add_log("create iconer result:%s"%rt)
-			else:
-				log_window.add_log('vedio not exist!!')
-	else:
-		log_window.add_log("Couldn't find plugin " + _plugin_name)	
-	
-	

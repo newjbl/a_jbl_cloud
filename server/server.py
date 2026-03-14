@@ -254,6 +254,7 @@ def handle_ue_upload_do(upload_socket:socket.socket, client_addr:tuple, upload_t
         if not data:
             print("[%s]ue(%s) upload close(no data4)"%(datetime.now(), client_addr))
             return False
+        print('handle_ue_upload_do:%s:%s'%(len(data), data))
         idx = data[:6]
         data_block = data[6:-8]
         crc = int(data[-8:], 16)
@@ -431,8 +432,8 @@ def start_godot_download_server():
         threading.Thread(target=handle_ue_download, args=(client_socket, addr), daemon=True).start()
 
 def review_files_on_server():
+    print("[%s]start review files on server"%(datetime.now()))
     while True:
-        print("[%s]start review files on server"%(datetime.now()))
         root, dirs, files = list_all_dir_files(FILE_SAVE_DIR)
         for usr in dirs:
             files_txt_path = os.path.join(FILE_SAVE_DIR, usr, 'files.txt')
@@ -462,7 +463,7 @@ def review_files_on_server():
             if if_changed:
                 with open(files_txt_path, 'w', encoding='utf-8') as f:
                     f.write(json.dumps(files_txt_dic, indent=2, ensure_ascii=False))
-            time.sleep(60 * 60 * 24)
+        time.sleep(60 * 60 * 24)
 
 if __name__ == "__main__":
     try:
