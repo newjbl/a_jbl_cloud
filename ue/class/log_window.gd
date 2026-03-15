@@ -10,6 +10,7 @@ var drag_offset := Vector2.ZERO
 var log_buffer:Array = []
 
 func _ready():
+	panel.position = Vector2i(100, 500)
 	log_text.bbcode_enabled = true
 	clear_btn.pressed.connect(_on_clear)
 	close_btn.pressed.connect(_on_close)

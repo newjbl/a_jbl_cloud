@@ -79,6 +79,25 @@ def send_data_block(_socket, idx, data):
         print(data_block[:40])
     _socket.sendall(data_block)
 
+
+def recv_all(sock, target_length, first=False) -> bytes:
+    received_data = b''
+    # 剩余需要接收的字节数
+    remaining = target_length
+    try:
+        while remaining > 0:
+            chunk = sock.recv(remaining)
+            received_data += chunk
+            remaining -= len(chunk)
+    except socket.timeout:
+        if first:
+            return ''
+        import traceback
+        print(traceback.print_exc())
+        print(remaining)
+        return ''
+    return received_data
+
 def handle_login(login_socket, client_addr, meta_json):
     req_type = meta_json.get("req_type", "")
     usr = meta_json.get("usr", "")
@@ -116,7 +135,7 @@ def handle_ue_upload(upload_socket:socket.socket, client_addr:tuple):
         "file_md5": ""}
     try:
         while True:
-            data_head = upload_socket.recv(10)
+            data_head = recv_all(upload_socket,10, True)
             if not data_head:
                 print("[%s]ue(%s) upload close(no data)"%(datetime.now(), client_addr))
                 break
@@ -142,11 +161,11 @@ def handle_ue_upload(upload_socket:socket.socket, client_addr:tuple):
 
 def handle_ue_upload_req(upload_socket:socket.socket, client_addr:tuple, upload_text):
     try:
-        req_len = upload_socket.recv(4)
+        req_len = recv_all(upload_socket,4)
         if not req_len:
             print("[%s]ue(%s) request upload close(no data1)"%(datetime.now(), client_addr))
             return False
-        data = upload_socket.recv(int(req_len, 16))
+        data = recv_all(upload_socket,int(req_len, 16))
         if not data:
             print("[%s]ue(%s) request upload close(no data2)"%(datetime.now(), client_addr))
             return False
@@ -246,15 +265,15 @@ def handle_ue_upload_details(upload_socket:socket.socket, client_addr:tuple, met
 def handle_ue_upload_do(upload_socket:socket.socket, client_addr:tuple, upload_text):
     global debug_ctl_flag
     try:
-        req_len = upload_socket.recv(4)
+        req_len = recv_all(upload_socket,4)
         if not req_len:
             print("[%s]ue(%s) upload close(no data3)"%(datetime.now(), client_addr))
             return False
-        data = upload_socket.recv(int(req_len, 16))
+        data = recv_all(upload_socket,int(req_len, 16))
         if not data:
             print("[%s]ue(%s) upload close(no data4)"%(datetime.now(), client_addr))
             return False
-        print('handle_ue_upload_do:%s:%s'%(len(data), data))
+        print('handle_ue_upload_do:%s,%s:%s'%(req_len, len(data), data))
         idx = data[:6]
         data_block = data[6:-8]
         crc = int(data[-8:], 16)
@@ -291,14 +310,14 @@ def handle_ue_upload_do(upload_socket:socket.socket, client_addr:tuple, upload_t
             update_login_dic(upload_socket, client_addr)
             print("[%s]ue(%s) upload link disconnect"%(datetime.now(), client_addr))
             return True
-        else:
-            global download_process_dic
-            filepath = upload_text['fin_file_path']
-            download_process = download_process_dic.get(filepath, '0.0')
-            new_download_process = "%.1f"%(new_offset / file_size)
-            if new_download_process != download_process:
-                send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "PROCESS", "%s;%s" % (upload_text['gd_filepath'], file_size), new_offset)
-                download_process_dic[filepath] = new_download_process
+        #else:
+        #    global download_process_dic
+        #    filepath = upload_text['fin_file_path']
+        #    download_process = download_process_dic.get(filepath, '0.0')
+        #    new_download_process = "%.1f"%(new_offset / file_size)
+        #    if new_download_process != download_process:
+        #        send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "PROCESS", "%s;%s" % (upload_text['gd_filepath'], file_size), new_offset)
+        #        download_process_dic[filepath] = new_download_process
         return True
     except Exception as e:
         import traceback
@@ -313,7 +332,7 @@ def handle_ue_download(download_socket: socket.socket, client_addr: tuple):
     download_text = {}
     try:
         while True:
-            data_head = download_socket.recv(10)
+            data_head = recv_all(download_socket, 10)
             if not data_head:
                 print("[%s]ue(%s) request download close(no data)" % (datetime.now(), client_addr))
                 break
@@ -334,11 +353,11 @@ def handle_ue_download(download_socket: socket.socket, client_addr: tuple):
 def handle_ue_download_req(download_socket:socket.socket, client_addr:tuple, download_text):
     req_type = ""
     try:
-        req_len = download_socket.recv(4)
+        req_len = recv_all(download_socket, 4)
         if not req_len:
             print("[%s]ue(%s) request download close(no data1)"%(datetime.now(), client_addr))
             return False
-        data = download_socket.recv(int(req_len, 16))
+        data = recv_all(download_socket, int(req_len, 16))
         if not data:
             print("[%s]ue(%s) request download close(no data2)"%(datetime.now(), client_addr))
             return False
@@ -371,6 +390,7 @@ def handle_ue_download_details(download_socket:socket.socket, client_addr:tuple,
         send_stander_ack(download_socket, "|SV>GD|RQ:", 'download', "ERROR8", ERROR_CODE_DIC["ERROR8"], 0)
         return False
     fin_file_path = os.path.join(usr_dir, filepath)
+    print("[%s]ue(%s) request download parameters OK:fin_file_path:%s" % (datetime.now(), client_addr, fin_file_path))
     if status == "OK":
         if offset >= 0:
             time.sleep(0.5)

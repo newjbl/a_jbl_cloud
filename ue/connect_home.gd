@@ -99,6 +99,9 @@ var update_files_aupload_thread:Thread = null
 var update_files_adelete_thread:Thread = null
 var clear_list:Array = []
 var search_key:String = ''
+var display_file_dic:Dictionary = {}
+var need_clear_ui:bool = false
+var need_update_ui:bool = false
 
 var log_window = null
 var debug_on_win:bool = false
@@ -155,15 +158,23 @@ func _ready() -> void:
 	
 	#if current_state == 'init':
 	#	update_state()
-	#for_test()
+	for_test()
 
 func for_test() -> void:
 	#current_state = 'query_files'
 	#query_files()
 	
-	current_state = 'push_files_table'
-	update_state()
-
+	#current_state = 'push_files_table'
+	#update_state()
+	
+	#var taskid:String = generate_task_id()
+	#var upload_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
+	#upload_obj.upload_a_file('/storage/emulated/0/ab/20220515183051.jpg')
+	
+	var taskid:String = generate_task_id()
+	var dl_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'no')
+	dl_obj.download_a_file('/storage/emulated/0/ab/02.jpg')
+	
 ########################################### for GUI ################################
 func type_display_style(a, font_size, t=bt_theme) -> void:
 	a.set('theme_override_colors/font_color', Color(0.0, 0.0, 0.0, 1.0))
@@ -841,7 +852,7 @@ func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 		var on_ue:String = filedic.get('on_ue', 'no')
 		var on_server:String = filedic.get('on_server', 'no')
 		var on_server_status:String = filedic.get('status', 'normal')
-		var icon_path:String = ICON_DIR.path_join(filedic.get('md5', ''))
+		var icon_path:String = ICON_DIR.path_join(filedic.get('md5', '')) + '.png'
 		var texture_vbox:VBoxContainer = VBoxContainer.new()
 		texture_vbox.name = 'texture_box_%s'%[idy]
 		idy += 1
@@ -939,7 +950,6 @@ func sort_files_by_method_duration(f_table:Dictionary) -> Dictionary:
 	return rt
 
 func update_and_show_files() -> void:
-	call_deferred('clear_ui')
 	if update_show_thread:
 		update_show_thread.wait_to_finish()
 	update_show_thread = Thread.new()
@@ -948,21 +958,25 @@ func update_and_show_files() -> void:
 func update_and_show_files_thread() -> void:
 	log_window.add_log('[connect_home]->update_and_show_files_thread')
 	var taskid:String = generate_task_id()
-	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('av').path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
+	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
 	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
 	var f_table:Dictionary = scan_files_obj.read_db().get('all_files_dic', {})
-	var file_dic:Dictionary = sort_files_by_method_duration(f_table)
-	call_deferred('update_ui', file_dic)
-	log_window.add_log('[connect_home]->update_and_show_files_thread:thread_finish')
+	display_file_dic = sort_files_by_method_duration(f_table)
+	#call_deferred('clear_ui')
+	#call_deferred('update_ui', file_dic)
+	need_update_ui = true
+	log_window.add_log('[connect_home]->update_and_show_files_thread:thread_finish:%s'%[JSON.stringify(display_file_dic)])
 	
-func update_ui(file_dic:Dictionary) -> void:
+func update_ui() -> void:
 	log_window.add_log('[connect_home]->update_ui')
-	var timek_list:Array = file_dic.keys()
+	clear_ui()
+	return
+	var timek_list:Array = display_file_dic.keys()
 	timek_list.sort()
 	for idx in range(len(timek_list)):
 		var timek:String = timek_list[timek_list.size() - idx -1]
 		var show_list:Array = []
-		for eachf in file_dic[timek]:
+		for eachf in display_file_dic[timek]:
 			if search_key == '' or search_key.to_upper() in eachf.filename.to_upper():
 				show_list.append(eachf)
 		if show_list:
@@ -1299,6 +1313,7 @@ func deal_files() -> void:
 		elif on_ue == 'yes' and on_server == 'yes':#need check if need delete on UE
 			if if_need_delete_ue_file(all_files_dic[eachpath], 7):
 				delete_dic[eachpath] = 'not delete yet'
+	log_window.add_log("[connect_home]->deal_files:%s"%[JSON.stringify(upload_dic)])
 	_on_class_report_result('connect_home', '', 'deal_files', '', 'FINISH')
 	
 func upload_files() -> void:
@@ -1519,6 +1534,7 @@ func show_sub_log() -> void:
 	logs_show_delete.call_deferred("set_text", "%s"%[logs_dic.delete_rt])
 
 func show_main_log(msg:String) -> void:
+	pass
 	logs_show.call_deferred("set_text", msg)
 	
 func show_upload_process() -> void:
@@ -1633,3 +1649,10 @@ func _process(_del)	-> void:
 		if obj != null:
 			obj._destory()
 			obj = null	
+	if need_clear_ui:
+		clear_ui()
+		need_clear_ui = false
+	if need_update_ui:
+		update_ui()
+		need_update_ui = false
+	

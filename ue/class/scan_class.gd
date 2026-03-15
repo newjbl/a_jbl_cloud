@@ -49,6 +49,7 @@ func scan_a_dir_thread(scan_root_dir:String) -> void:
 	emit_signal("scan_finished", 'scan_class', taskid, 'scan', JSON.stringify(scan_rt), 'FINISH')
 	
 func merger_table() -> void:
+	log_window.add_log('[scan_class]->merger_table')
 	var db_dic:Dictionary = read_db()
 	var server_files_dic:Dictionary = db_dic.get('all_files_dic', {})
 	var rename_files_dic:Dictionary = {}
@@ -90,12 +91,13 @@ func merger_table() -> void:
 		if ft not in iconer_file_dic:
 			iconer_file_dic[ft] = []
 		iconer_file_dic[ft].append(eachfile)
-	iconer_c.create_icon(iconer_file_dic, ProjectSettings.globalize_path(icon_dir), 256)
+	#iconer_c.create_icon(iconer_file_dic, ProjectSettings.globalize_path(icon_dir), 256)
 	write_db({"all_files_dic": server_files_dic, "rename_files_dic": rename_files_dic})
 	
 func get_all_files(scaned_path:String) -> void:
 	log_window.add_log('[scan_class]->get_all_files:will scan:%s'%[scaned_path])
 	emit_signal("scan_finished", 'scan_class', taskid, 'scan', scaned_path, 'START')
+	var is_scan_path:bool = is_a_subdir_for_blist(scaned_path, scan_dir_list)
 	var dir:DirAccess = DirAccess.open(scaned_path)
 	if dir == null:
 		log_window.add_log("open dir failed:%s, reason:%s"%[scaned_path, DirAccess.get_open_error()])
@@ -108,12 +110,15 @@ func get_all_files(scaned_path:String) -> void:
 			if is_a_subdir_for_blist(current_path, scan_dir_list):
 				get_all_files(current_path)
 		else:
+			if not is_scan_path:
+				log_window.add_log("[scan_class]->get_all_files:not scan dir:%s"%[scaned_path])
+				current_name = dir.get_next()
+				continue
 			if current_name in ignore_file_list:
 				log_window.add_log("[scan_class]->get_all_files:ignore file:%s"%[current_name])
 				current_name = dir.get_next()
 				continue
 			var filetype = current_path.get_extension().to_upper()
-			
 			if filetype not in scan_ext_list:
 				log_window.add_log("[scan_class]->get_all_files:ignore ext file:%s"%[current_name])
 				current_name = dir.get_next()
