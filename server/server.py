@@ -273,7 +273,7 @@ def handle_ue_upload_do(upload_socket:socket.socket, client_addr:tuple, upload_t
         if not data:
             print("[%s]ue(%s) upload close(no data4)"%(datetime.now(), client_addr))
             return False
-        print('handle_ue_upload_do:%s,%s:%s'%(req_len, len(data), data))
+        #print('handle_ue_upload_do:%s,%s:%s'%(req_len, len(data), data))
         idx = data[:6]
         data_block = data[6:-8]
         crc = int(data[-8:], 16)

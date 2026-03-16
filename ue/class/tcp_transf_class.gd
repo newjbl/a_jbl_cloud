@@ -12,18 +12,9 @@ var upload_thread:Thread = null
 var upload_running:bool = false
 var download_thread:Thread = null
 var download_running:bool = false
-var if_download_sys:bool = false
-var write_thread:Thread = null
-
-var req_upload_ack:Dictionary = {}
-var req_download_ack:Dictionary = {}
-var req_login_ack:Dictionary = {}
 
 var tmp_format:String = '.dtmp'
 var dl_tmpfilepath:String = ''
-var dl_buffer:Array = []
-var dl_l2_buffer:Array = []
-var dl_mute:Mutex = Mutex.new()
 var crc32_class:CRC32_C = CRC32_C.new()
 var UPLOAD_BUF_SIZE:int = 1024
 
@@ -57,13 +48,9 @@ func connect_to_server(poolmax=10) -> void:
 	var socket_status = _socket.get_status()
 	if socket_status in [StreamPeerTCP.STATUS_CONNECTED, StreamPeerTCP.STATUS_CONNECTING]:
 		return
-	req_upload_ack = {}
-	req_download_ack = {}
 	upload_running = false
 	download_running = false
-	if_download_sys = false
 	dl_tmpfilepath = r''
-	dl_buffer = []
 	
 	var error = _socket.connect_to_host(serverip, serverport)
 	match error:
@@ -92,16 +79,19 @@ func query_files(filedic:Dictionary) -> void:
 	})
 
 func rec_a_datablock(timeout=3) -> Array:
-	log_window.add_log('[tcp_transf_class]->rec_a_datablock')
+	#log_window.add_log('[tcp_transf_class]->rec_a_datablock')
+	if _socket == null:
+		log_window.add_log('[tcp_transf_class]->rec_a_datablock:_socket is null')
+		return ['', 'error-1']
 	var stime:int = Time.get_ticks_msec()
-	while _socket.get_available_bytes() < 10:
+	while _socket and _socket.get_available_bytes() < 10:
 		if Time.get_ticks_msec() - stime > timeout * 1000:
 			return ['', 'error0']
 	var header:String = ''
 	var data:Array = _socket.get_data(10)
 	if data[0] == Error.OK and data[1].size() > 0:
 		header = data[1].get_string_from_utf8()
-		if header == '|SV>GD|RQ:':
+		if header == REQ_HEADER:
 			stime = Time.get_ticks_msec()
 			while _socket.get_available_bytes() < 4:
 				if Time.get_ticks_msec() - stime > timeout * 1000:
@@ -130,7 +120,7 @@ func rec_a_datablock(timeout=3) -> Array:
 					return ['', 'error13']
 			log_window.add_log('[tcp_transf_class]->rec_a_datablock:error14')
 			return ['', 'error14']
-		elif header == '|SV>GD|DO:':
+		elif header == DO_HEADER:
 			stime = Time.get_ticks_msec()
 			while _socket.get_available_bytes() < 4:
 				if Time.get_ticks_msec() - stime > timeout * 1000:
@@ -158,8 +148,6 @@ func rec_a_datablock(timeout=3) -> Array:
 	else:
 		log_window.add_log('[tcp_transf_class]->rec_a_datablock:error1')
 		return ['', 'error1']
-	log_window.add_log('[tcp_transf_class]->rec_a_datablock:error00')
-	return ['', 'error00']
 
 func login_do(loopmax=3) -> bool:
 	log_window.add_log("[tcp_transf_class]->login_do.")
@@ -167,7 +155,6 @@ func login_do(loopmax=3) -> bool:
 	if _socket.get_status() != StreamPeerTCP.STATUS_CONNECTED:
 		log_window.add_log("[tcp_transf_class]->login_do failed due to _socket status is %s"%[_socket.get_status()])
 		return false
-	var stime = Time.get_ticks_msec()
 	var loop_cnt = 0
 	while loop_cnt < loopmax:
 		request_a_message({
@@ -182,8 +169,9 @@ func login_do(loopmax=3) -> bool:
 			if rt_status == 'OK':
 				emit_signal("report_result", "tcp_transf_class", taskid, "login", '', 'FINISH')
 				return true
+			log_window.add_log("[tcp_transf_class]->login_do:login failed"%[r[1].get('message', 'unknown error')])
 		loop_cnt += 1
-	log_window.add_log("[tcp_transf_class]->login_do:login failed:%s"%[req_login_ack.get('message', 'unknown error')])
+	log_window.add_log("[tcp_transf_class]->login_do:login failed")
 	return false
 		
 func disconnect_to_server() -> void:
@@ -192,12 +180,8 @@ func disconnect_to_server() -> void:
 		log_window.add_log("[tcp_transf_class]->disconnect_to_server. _socket is null")
 		return
 	download_running = false
-	if_download_sys = false
-	req_upload_ack = {}
-	req_download_ack = {}
 	upload_running = false
 	dl_tmpfilepath = r''
-	dl_buffer = []
 	var socket_status = _socket.get_status()
 	if socket_status != StreamPeerTCP.STATUS_CONNECTED:
 		return
@@ -226,33 +210,30 @@ func upload_a_file_thread(filepath) -> void:
 		log_window.add_log("[tcp_transf_class]->upload_a_file_thread:will send req_upload, cnt=%s, socket_status:%s"%[loop_cnt, _socket.get_status()])
 		loop_cnt += 1	
 		request_upload(filepath)
-		var r:Array = rec_a_datablock()
-		if r[0] == REQ_HEADER:
-			var rt_status = r[1].get('status', '')
+		var r1:Array = rec_a_datablock()
+		if r1[0] == REQ_HEADER:
+			var rt_status = r1[1].get('status', '')
 			if rt_status == 'OK':
 				upload_running = true
-				upload_data(filepath, req_upload_ack.get('offset', 0))
-				r = rec_a_datablock()
-				if r[0] == REQ_HEADER:
-					rt_status = r[1].get('status', '')
+				upload_data(filepath, r1[1].get('offset', 0))
+				var r2 = rec_a_datablock()
+				if r2[0] == REQ_HEADER:
+					rt_status = r2[1].get('status', '')
 					if rt_status == 'FINISH':
-						log_window.add_log('[tcp_transf_class]->upload_a_file_thread: upload FINISH')
-						disconnect_to_server()
-						emit_signal("report_result", 'tcp_transf_class', taskid, 'upload', upload_file, 'FINISH')
+						log_window.add_log('[tcp_transf_class]->upload_a_file_thread:%s upload finish, get response from server'%[filepath])
+						upload_report_result('FINISH')
 						return
-					elif rt_status == 'ERROR2':
-						log_window.add_log('[tcp_transf_class]->upload_a_file_thread: upload failed but already exist')
-						disconnect_to_server()
-						emit_signal("report_result", 'tcp_transf_class', taskid, 'upload', upload_file, 'FINISH')
-						return
-					elif rt_status == 'PROCESS':
-						log_window.add_log('[tcp_transf_class]->upload_a_file_thread:upload process:%s'%[r[1].get('message', '/')])
-						emit_signal("report_result", 'tcp_transf_class', taskid, 'upload', upload_file, 'FAILED')
 					else:
-						log_window.add_log('[tcp_transf_class]->upload_a_file_thread:upload failed:%s'%[req_upload_ack.get('message', 'unknown error')])
-						disconnect_to_server()
-						emit_signal("report_result", 'tcp_transf_class', taskid, 'upload', upload_file, 'FAILED')
-						
+						log_window.add_log('[tcp_transf_class]->upload_a_file_thread:%s upload failed:%s'%[filepath, rt_status])
+			elif rt_status == 'ERROR2':
+				log_window.add_log('[tcp_transf_class]->upload_a_file_thread:%s upload finish, already on server'%[filepath])
+				upload_report_result('FINISH')
+				return
+			else:
+				log_window.add_log('[tcp_transf_class]->upload_a_file_thread:%s upload failed:%s'%[filepath, rt_status])
+	upload_report_result('FAILED')
+	return
+							
 func upload_data(filepath, offset) -> void:
 	log_window.add_log("[tcp_transf_class]->upload_data:%s  %s"%[filepath, offset])
 	var uploadfile = FileAccess.open(filepath, FileAccess.READ)
@@ -262,6 +243,7 @@ func upload_data(filepath, offset) -> void:
 	var files_size:int = FileAccess.get_size(filepath)
 	var dat_format:PackedByteArray = "|GD>SV|DO:".to_utf8_buffer()
 	var idx = 0
+	var process:int = 0
 	while upload_running and offset < files_size:
 		var block:PackedByteArray = uploadfile.get_buffer(UPLOAD_BUF_SIZE)
 		var block_len:PackedByteArray = ("%04X"%[block.size() + 6 + 8]).to_utf8_buffer()
@@ -273,10 +255,18 @@ func upload_data(filepath, offset) -> void:
 		_socket.put_data(frame)
 		offset += block.size()
 		idx += 1
-	if upload_running == false and req_upload_ack.get('status', '') == 'FINISH':
-		log_window.add_log('[tcp_transf_class]->upload_data: finish: %s'%[filepath])
-		emit_signal("report_result", "tcp_transf_class", taskid, 'upload', 'FINISH')
-		request_a_message({'req_type':'upload', 'status':'FINISH'})
+		var n_process = int(100 * offset / files_size)
+		if n_process > process:
+			process = n_process
+			emit_signal("report_result", 'tcp_transf_class', taskid, 'upload', 
+			'%s;%s;%s'%[offset, filepath, files_size], 'PROCESS')
+	log_window.add_log("[tcp_transf_class]->upload_data finish:%s  %s"%[filepath, offset])
+
+func upload_report_result(rt:String) -> void:
+		log_window.add_log('[tcp_transf_class]->upload_report_result:%s'%[rt])
+		upload_running = false
+		disconnect_to_server()
+		emit_signal("report_result", 'tcp_transf_class', taskid, 'upload', upload_file, rt)
 
 ######################### download #########################
 func download_a_file(filepath:String) -> void:
@@ -338,7 +328,6 @@ func download_a_file_thread(filepath) -> void:
 					while true:
 						var rrr = rec_a_datablock()
 						if rrr[0] == DO_HEADER:
-							var ttt = rrr[1].get_string_from_utf8()
 							var wr:Dictionary = write_a_data_block(f, rrr[1], idx)
 							if wr['s'] == 0 and wr['d'] in [4, 5, 6, 7]:
 								break
@@ -353,12 +342,19 @@ func download_a_file_thread(filepath) -> void:
 					if download_file_md5 == md5_check:
 						DirAccess.rename_absolute(dl_tmpfilepath, filepath)
 						log_window.add_log('[tcp_transf_class]->write_a_file_thread:md5 is ok, download finish!!')
+						download_report_result('FINISH')
+						return
 					else:
-						log_window.add_log('[tcp_transf_class]->write_a_file_thread:md5 is error, will retry')
-					disconnect_to_server()
-					download_report_result('FINISH')
-					
-							
+						log_window.add_log('[tcp_transf_class]->write_a_file_thread:md5 is error, will retry %s time'%loop_cnt)
+				else:
+					log_window.add_log('[tcp_transf_class]->write_a_file_thread:prepare file failed, will retry %s time'%loop_cnt)						
+			elif rt_status == 'ERROR7':
+				download_report_result('ERROR7')
+				return
+			else:
+				log_window.add_log("[tcp_transf_class]->download_a_file_thread:rt_status is %s, will try for %s time"%[rt_status, loop_cnt])
+		else:
+			log_window.add_log("[tcp_transf_class]->download_a_file_thread:get req_header failed, will try for %s time"%loop_cnt)
 	log_window.add_log("[tcp_transf_class]->download_a_file_thread finish:%s"%[filepath])
 	
 func download_file_prepare_name_overwrite(filepath:String) -> bool:
@@ -407,178 +403,12 @@ func download_file_prepare_name(filepath:String, sv_md5:String) -> Array:#[resul
 
 func download_report_result(rt:String) -> void:
 	download_running = false
-	if_download_sys = false
+	disconnect_to_server()
 	log_window.add_log('[tcp_transf_class]->download_report_result:download %s!!'%rt)
 	emit_signal('report_result', 'tcp_transf_class', taskid, 'download', download_file_dic.get('filepath', ''), rt)
 	
-######################  receive data #########################
-#func receiving_data_thread():
-	#while rec_data_running and _socket:
-		#if _socket and _socket.get_status() == StreamPeerTCP.STATUS_CONNECTED:
-			#var rec_len = _socket.get_available_bytes()
-			#if rec_len > 0:
-				#var data = _socket.get_data(rec_len)
-				#if data[0] == Error.OK:
-					#if data[1].size() > 0:
-						##print('------------------ 1 -----------------')
-						##print('receiving_data_thread:%s'%[data[1].get_string_from_utf8()])
-						#var hd:Array = received_get_header(data[1])
-						#var header:String = hd[0]
-						#var payload:PackedByteArray = hd[1]
-						#received_and_deal_data(header, payload)
-					#else:
-						#log_window.add_log('[tcp_transf_class]->receiving_data_thread:data[1].size() <= 0')
-				#else:
-					#log_window.add_log('[tcp_transf_class]->receiving_data_thread:get data error')
-	#log_window.add_log('[tcp_transf_class]->receiving_data_thread:finish')
-#
-#func receiving_do_data() -> void:
-	#log_window.add_log('[tcp_transf_class]->receiving_do_data')
-	#write_thread = Thread.new()
-	#write_thread.start(write_a_file_thread)
-	##var idx:int = 0
-	#var stime:int = 0
-	#var rec_len:int = UPLOAD_BUF_SIZE + 28
-	#while download_running and _socket:
-		#while download_running and _socket and _socket.get_available_bytes() == 0:
-			#pass
-		#stime = Time.get_ticks_msec()
-		#while  download_running and _socket and _socket.get_available_bytes() < UPLOAD_BUF_SIZE + 28:
-			#var ctime:int = Time.get_ticks_msec()
-			#if ctime - stime > 1000:
-				#break
-		#if _socket == null:
-			#return
-		#var data = _socket.get_data(rec_len)
-		#if data[0] == Error.OK:
-			#if data[1].size() > 0:
-				##if idx < 10:
-				##	print('------------------ 2 ----------------- %s'%[rec_len])
-				##	print('receiving_data_thread:%s'%[data[1].get_string_from_utf8()])
-				##idx += 1
-				#dl_mute.lock()
-				#dl_buffer.append(data[1].slice(10))
-				#dl_mute.unlock()
-		#else:
-			#log_window.add_log('[tcp_transf_class]->receiving_data_thread:get data error')
-	#log_window.add_log('[tcp_transf_class]->receiving_do_data finish!!!')
-	#
-#func received_and_deal_data(header:String, data:PackedByteArray) -> void:
-	#if header == '|SV>GD|RQ:':
-		#var r:Dictionary = receive_parser_req_data(header + data.get_string_from_utf8())
-		#log_window.add_log("[tcp_transf_class]->received_and_deal_data:|SV>GD|RQ: %s is %s:"%[len(header) + len(data), r])
-		#var req_type = r.data.get('req_type', '')
-		#if req_type == 'upload':
-			#req_upload_ack = r.data
-			#var status = req_upload_ack.get('status', '')
-			#if status in ['ERROR3', 'ERROR4', 'ERROR5']:
-				#if error_retry_cnt > 0:
-					#log_window.add_log("[tcp_transf_class]->received_and_deal_data:!!!! receive error from server:%s, will retry %s" % [status, error_retry_cnt])
-					#error_retry_cnt += 1
-					#disconnect_to_server()
-					#connect_to_server()
-					#upload_a_file(upload_file)
-				#else:
-					#log_window.add_log('[tcp_transf_class]->received_and_deal_data:!!!! receive error from server'%[status, error_retry_cnt])
-					#disconnect_to_server()
-			#elif status == 'FINISH':
-				#log_window.add_log("[tcp_transf_class]->received_and_deal_data: upload FINISH")
-				#emit_signal("report_result", "tcp_transf_class", taskid, 'upload', upload_file, 'FINISH')
-			#elif status == 'PROCESS':
-				#emit_signal("report_result", 'tcp_transf_class', taskid, 'upload', '%s;%s'%[req_upload_ack.get('offset', '0'),
-				#req_upload_ack.get('message', ';0')], 'PROCESS')
-		#elif req_type == 'download':
-			#req_download_ack = r.data
-		#elif req_type == 'login':
-			#req_login_ack = r.data
-		#elif req_type == 'query':
-			#if r.data.status != 'OK':
-				#emit_signal("report_result", "tcp_transf_class", taskid, 'query', '', 'FAILED')
-			#else:
-				#emit_signal("report_result", "tcp_transf_class", taskid, 'query', '', r.data.message)
-	#elif header == '|SV>GD|DO:':
-		#var data_size_int:int = data.slice(0, 4).get_string_from_utf8().hex_to_int()
-		#if len(data) == data_size_int + 4:
-			##print('------------------ 3 -----------------')
-			##print('receiving_data_thread:%s'%[data.slice(0, data_size_int + 4).get_string_from_utf8()])
-			#dl_mute.lock()
-			#dl_buffer.append(data)
-			#dl_mute.unlock()
-			#log_window.add_log('[tcp_transf_class]->received_and_deal_data:len(data) == data_size_int + 4')
-			#receiving_do_data()
-		#elif len(data) > data_size_int + 4:
-			#log_window.add_log('[tcp_transf_class]->received_and_deal_data:len(data) > data_size_int + 4')
-			#if data.slice(0, 10).get_string_from_utf8() == '040E000000':
-				#dl_mute.lock()
-				#dl_buffer.append(data.slice(0, data_size_int + 4))
-				#dl_mute.unlock()
-				#var need_len:int = UPLOAD_BUF_SIZE + 28 - (len(data) - (data_size_int + 4))
-				#var rec_data:Array = _socket.get_data(need_len)
-				#if rec_data[0] == Error.OK:
-					#if rec_data[1].size() > 0:
-						#var l:PackedByteArray = data.slice(data_size_int + 4 + 10)
-						#var r:PackedByteArray = rec_data[1]
-						##print('------------------ 4 -----------------')
-						##print('receiving_data_thread:%s'%[(l + r).get_string_from_utf8()])
-						#dl_mute.lock()
-						#dl_buffer.append(l + r)
-						#dl_mute.unlock() 
-						#receiving_do_data()
-					#else:
-						#print('!!!!!!!!!!!!!!!!!!!!!!---------1')
-				#else:
-					#print('!!!!!!!!!!!!!!!!!!!!!!!----------2')
-			#else:
-				#print('!!!!!!!!!!!!!!!!!!!!!!!!-----------3')
-		#else:
-			#log_window.add_log('[tcp_transf_class]->received_and_deal_data:len(data) < data_size_int + 4')
-		#
-#func receive_parser_req_data(data:String):
-	#var data_size:String = data.substr(10, 4)
-	#if not data_size.is_valid_hex_number():
-		#return {'r':false, 'detail':'date size error', 'data':{}}
-	#var data_size_int:int = data_size.hex_to_int()
-	#if data_size_int <= 8:
-		#return {'r':false, 'detail':'date size < 8', 'data':{}}
-	#if len(data) < data_size_int + 14:
-		#return {'r':false, 'detail':'date size too short', 'data':{}}
-	#var _data:String = data.substr(14, data_size_int)
-	#var data_block:String = _data.substr(0, data_size_int - 8)
-	#var crc = _data.substr(data_size_int - 8, 8)
-	#if not crc.is_valid_hex_number():
-		#return {'r':false, 'detail':'crc error', 'data':{}}
-	#var crc_int:int = crc.hex_to_int()
-	#var crc_check:int = crc32_class.fCRC32(data_block.to_utf8_buffer())
-	#if crc_int != crc_check:
-		#return {'r':false, 'detail':'date size error', 'data':{}}
-	#var parser = JSON.new()
-	#var err = parser.parse(data_block)
-	#if err == OK:
-		#return {'r':true, 'detail':'', 'data':parser.data}
-	#return {'r':false, 'detail':'null', 'data':{}}
-	#
-#func received_get_header(data:PackedByteArray) -> Array:
-	#var p1:PackedByteArray = data.slice(0, 10)
-	#var p2:PackedByteArray = data.slice(10)
-	#var header:String = p1.get_string_from_utf8()
-	#return [header, p2]
-	#
-	
 ###################  write files #############################
 func write_a_data_block(f:FileAccess, data_block:PackedByteArray, preidx:int) -> Dictionary:
-	#var data_size:String = data_block.slice(0, 4).get_string_from_utf8()
-	#if not data_size.is_valid_hex_number():
-		#var _a = data_block.slice(0, 100).get_string_from_utf8()
-		#log_window.add_log("write_a_data_block: get data size failed")
-		#return {'s':0, 'd':1, 'idx':preidx}
-	#var data_size_int:int = data_size.hex_to_int()
-	#if data_size_int <= 14:
-		#log_window.add_log("write_a_data_block: data_size_int <= 14")
-		#return {'s':0, 'd':2, 'idx':preidx}
-	#if len(data_block) != data_size_int + 4:
-		#log_window.add_log("write_a_data_block: data_size_int too short:%s != %s + 4"%[data_block.size(), data_size_int])
-		#var _a = data_block.slice(0, 100).get_string_from_utf8()
-		#return {'s':0, 'd':3, 'idx':preidx}
 	var data_size_int = data_block.size()
 	var crc:String = data_block.slice(data_size_int - 8).get_string_from_utf8()
 	if not crc.is_valid_hex_number():
@@ -606,61 +436,6 @@ func write_a_data_block(f:FileAccess, data_block:PackedByteArray, preidx:int) ->
 		f.seek_end()
 	var _r = f.store_buffer(data_payload)
 	return {'s':data_payload.size(), 'd':-1, 'idx':idxint}
-
-func write_a_file_thread():
-	log_window.add_log('[tcp_transf_class]->write_a_file_thread start')
-	var filepath:String = download_file_dic.get('filepath', '')
-	var file_size:int = download_file_dic.get('file_size', 0)
-	var md5:String = download_file_dic.get('md5', '')
-	var offset:int = download_file_dic.get('offset', -1)
-	while not download_running:
-		pass
-	var f = FileAccess.open(dl_tmpfilepath, FileAccess.READ_WRITE)
-	if f:
-		f.seek_end()
-	else:
-		f = FileAccess.open(dl_tmpfilepath, FileAccess.WRITE)
-	var current_size:int = offset
-	var idx = -1
-	var need_retry = false
-	while download_running:
-		var data_block:PackedByteArray = []
-		dl_mute.lock()
-		if dl_buffer.size() > 0:
-			data_block = dl_buffer.pop_front()
-		dl_mute.unlock()
-		if data_block and f:
-			var r:Dictionary = write_a_data_block(f, data_block, idx)
-			if r['s'] == 0 and r['d'] in [4, 5, 6, 7]:
-				need_retry = true
-				break
-			current_size += r['s']
-			idx = r['idx']
-			#if error_cnt > 0 and current_size >= file_size * 0.3:
-				#error_cnt -= 1
-				#download_running = false
-			if current_size >= file_size:
-				download_running = false
-				if_download_sys = false
-				log_window.add_log('[tcp_transf_class]->write_a_file_thread:stop download due to current_size >= file_size!')
-		else:
-			if current_size >= file_size:
-				download_running = false
-				if_download_sys = false
-	f.close()
-	var md5_check = FileAccess.get_md5(dl_tmpfilepath)
-	if md5 == md5_check:
-		DirAccess.rename_absolute(dl_tmpfilepath, filepath)
-		log_window.add_log('[tcp_transf_class]->write_a_file_thread:md5 is ok, download finish!!')
-		disconnect_to_server()
-		download_report_result('FINISH')
-	else:
-		need_retry = true
-	if need_retry:
-		log_window.add_log('md5 error!!!!')
-		disconnect_to_server()
-		connect_to_server()
-		download_a_file(filepath)
 				
 func request_download(filepath):
 	log_window.add_log("[tcp_transf_class]->request_download:%s"%[filepath])
@@ -713,10 +488,6 @@ func _destory() -> void:
 	if upload_thread:
 		upload_thread.wait_to_finish()
 	upload_thread = null
-	if write_thread:
-		write_thread.wait_to_finish()
-	write_thread = null
-	dl_mute = null
 	if crc32_class:
 		crc32_class.free()
 	queue_free()	

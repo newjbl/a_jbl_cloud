@@ -63,7 +63,6 @@ func merger_table() -> void:
 		#log_window.add_log('[scan_class]->merger_table:remove %s'%[eachfile])
 		#server_files_dic.erase(eachfile)
 	scan_rt.all = new_files_dic.keys().size()
-	var icon_file_dic:Dictionary = {}
 	for eachfile in new_files_dic:
 		var sdic = server_files_dic.get(eachfile, {})
 		var ndic = new_files_dic[eachfile]

@@ -107,15 +107,16 @@ var log_window = null
 var debug_on_win:bool = false
 
 func _ready() -> void:
-	if OS.get_name() == 'Android':
-		OS.request_permissions()
-		var r:String = "android.permission.WRITE_EXTERNAL_STORAGE"
-		var p:PackedStringArray = OS.get_granted_permissions()
-		print(p)
 	$bd_color.color = Color(0.818, 0.818, 0.818, 1.0)
 	debug_on_win = true if OS.get_name() == 'Windows' else false
 	log_window = preload("res://class/log_window.tscn").instantiate()
 	add_child(log_window)
+	
+	if OS.get_name() == 'Android':
+		OS.request_permissions()
+		var p:PackedStringArray = OS.get_granted_permissions()
+		log_window.add_log("got these permissions:%s"%p)
+	
 	log_window.add_log("ue cfg dir is: %s"%ProjectSettings.globalize_path("user://"))
 	log_window.add_log("ue scan root dir is: %s"%ProjectSettings.globalize_path(UE_ROOT_DIR))
 	if not DirAccess.dir_exists_absolute("user://db//"):
@@ -158,7 +159,7 @@ func _ready() -> void:
 	
 	#if current_state == 'init':
 	#	update_state()
-	for_test()
+	#for_test()
 
 func for_test() -> void:
 	#current_state = 'query_files'
@@ -970,7 +971,6 @@ func update_and_show_files_thread() -> void:
 func update_ui() -> void:
 	log_window.add_log('[connect_home]->update_ui')
 	clear_ui()
-	return
 	var timek_list:Array = display_file_dic.keys()
 	timek_list.sort()
 	for idx in range(len(timek_list)):
@@ -1325,11 +1325,13 @@ func upload_files() -> void:
 func upload_files_thread() -> void:
 	log_window.add_log("[connect_home]->upload_files_thread")
 	if upload_dic['notuploadyet'] == 0:
+		log_window.add_log("[connect_home]->upload_files_thread:no files need upload")
 		_on_class_report_result('connect_home', '', 'upload_files', '', 'FINISH')
 	while upload_dic['notuploadyet'] > 0:
 		var need_upload_cnt:int = max(0, 5 - upload_dic['uploading'])
 		if need_upload_cnt <= 0:
 			continue
+		log_window.add_log("[connect_home]->upload_files_thread:current upload_dic:%s"%[JSON.stringify(upload_dic['dic'])])
 		for filepath in upload_dic['dic']:
 			if upload_dic['dic'][filepath]['rt'] != 'notuploadyet':
 				continue
@@ -1534,7 +1536,6 @@ func show_sub_log() -> void:
 	logs_show_delete.call_deferred("set_text", "%s"%[logs_dic.delete_rt])
 
 func show_main_log(msg:String) -> void:
-	pass
 	logs_show.call_deferred("set_text", msg)
 	
 func show_upload_process() -> void:
@@ -1557,7 +1558,7 @@ func _from_tcp_transf_class(_who_i_am:String, taskid:String, req_type:String, in
 		if req_type == 'upload' and taskid in upload_task_dic and result == 'FINISH':       ## 2.1
 			if taskid in upload_task_dic:
 				clear_list.append(upload_task_dic[taskid])
-			show_main_log("[%s]上传完成:%s"%[current_state, infor])
+			#show_main_log("[%s]上传完成:%s"%[current_state, infor])
 			log_window.add_log("[connect_home]->_on_class_report_result:upload file:%s, result:%s"%[infor, result])
 			if result == 'FINISH':
 				upload_dic['dic'][infor]['rt'] = 'uploaded'
@@ -1582,22 +1583,24 @@ func _from_tcp_transf_class(_who_i_am:String, taskid:String, req_type:String, in
 			clear_list.append(push_obj)
 			if upload_or_delete == 'upload':
 				show_main_log("[%s]上传完成"%[current_state])
+				show_sub_log()
 			elif upload_or_delete == 'delete':
 				show_main_log("[%s]清理完成"%[current_state])
 				update_and_show_files()
 
 	if result == 'START' and req_type in e2z_dic:
+		pass
 		show_main_log('[%s], 开始%s:%s'%[current_state, e2z_dic.get(req_type, ''), infor])
 	elif result == 'PROCESS':
 		var a:Array = infor.split(';')
-		var filepath:String = UE_ROOT_DIR.path_join(a[1])
+		var filepath:String = a[1]
 		if filepath in upload_dic['dic']:
 			upload_dic['dic'][filepath]['process'] = a[0].to_int()
 			upload_dic['dic'][filepath]['size'] = a[2].to_int()
 		show_upload_process()
-	elif result == 'FAILED':
-		show_main_log('[%s], 失败'%[current_state])
-		log_window.add_log("[connect_home]->_on_class_report_result:failed!!!!!!!!!!!!")
+	#elif result == 'FAILED':
+	#	show_main_log('[%s], 失败'%[current_state])
+	#	log_window.add_log("[connect_home]->_on_class_report_result:failed!!!!!!!!!!!!")
 
 func _from_scan_class(_who_i_am:String, taskid:String, req_type:String, infor:String, result:String) -> void:
 	if current_state == 'scan_files':# scan finish
@@ -1622,7 +1625,8 @@ func _from_connect_home(_who_i_am:String, _taskid:String, req_type:String, infor
 		if req_type == 'upload_files' and result == 'FINISH':
 			update_files_table_after_upload()
 			logs_dic.upload_rt = '应上传:%s个, 上传成功:%s个, 上传失败:%s个'%[
-				upload_dic.keys().size(), upload_dic['uploaded'], upload_dic['uploadfailed']]
+				upload_dic['uploaded'] + upload_dic['uploadfailed'], 
+				upload_dic['uploaded'], upload_dic['uploadfailed']]
 			current_state = 'delete_files'## force to delete_files
 			update_state()
 			excute_state()
