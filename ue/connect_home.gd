@@ -867,7 +867,6 @@ func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 		var icon_path:String = ICON_DIR.path_join(filedic.get('md5', '')) + '.png'
 		var texture_vbox:VBoxContainer = VBoxContainer.new()
 		texture_vbox.name = 'texture_box_%s'%[idy]
-		idy += 1
 		var texture_rec:TextureRect = TextureRect.new()
 		texture_rec.name = "texture_rect_%s"%idy
 		if on_server == 'yes':
@@ -925,6 +924,7 @@ func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 		texture_rec.add_child(are2d)
 		var filepath_onue:String = filedic.get('ue_dir', '')
 		are2d.connect('input_event', _on_are2d_input.bind(UE_ROOT_DIR.path_join(filepath_onue), texture_rec))
+		idy += 1
 	vbox_block.add_child(title_label)
 	vbox_block.add_child(grid_container)
 	vbox_l3_vbox.call_deferred('add_child', vbox_block)
@@ -989,7 +989,7 @@ func update_and_show_files_thread() -> void:
 	#call_deferred('clear_ui')
 	#call_deferred('update_ui', file_dic)
 	need_update_ui = true
-	log_window.add_log('[connect_home]->update_and_show_files_thread:thread_finish:%s'%[JSON.stringify(display_file_dic)])
+	#log_window.add_log('[connect_home]->update_and_show_files_thread:thread_finish:%s'%[JSON.stringify(display_file_dic)])
 
 func get_dis_sidx_list() -> void:
 	dis_sidx_list = []
@@ -1026,7 +1026,7 @@ func update_ui() -> void:
 			break
 	show_sub_log()
 	dis_height = 0
-	log_window.add_log('[connect_home]->update_ui end:%s, %s, %s'%[dis_sidx, dis_sidx_list[dis_sidx]], dis_cnt)
+	log_window.add_log('[connect_home]->update_ui end:%s, %s, %s'%[dis_sidx, dis_sidx_list[dis_sidx], dis_cnt])
 
 func clear_ui() -> void:
 	log_window.add_log('[connect_home]->clear_ui')
