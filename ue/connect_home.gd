@@ -95,11 +95,21 @@ var upload_dic:Dictionary = {'uploading':0, 'notuploadyet':0, 'uploaded':0, 'upl
 var delete_dic:Dictionary = {}
 var query_rt:String = ''
 var cur_show_dic:Dictionary = {}
+
 var dis_top_force_time:int = 0
 var dis_last_scroll_pos:int = 0
 var dis_sidx_list:Array = []
 var dis_sidx:int = 0
 var dis_height:int = 0
+## 触发翻页的最小拖拽距离（像素）
+var drag_threshold: float = 50.0
+## 是否正在拖拽（鼠标/手指按下后未松开）
+var is_dragging: bool = false
+## 拖拽开始时的全局位置
+var drag_start_pos: Vector2 = Vector2.ZERO
+## 上一次滚动位置（用于检测是否到达边界）
+var last_scroll: int = 0
+
 
 var update_show_thread:Thread = null
 var upload_thread:Thread = null
@@ -842,6 +852,7 @@ func build_gui() -> void:
 	vbox_l3.add_child(scroll_container)
 	scroll_container.add_child(vbox_l3_vbox)
 	scroll_container.custom_minimum_size.y = 2000
+	scroll_container.get_v_scroll_bar().connect("value_changed", _on_scroll_value_changed)
 	
 func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 	log_window.add_log('[connect_home]->add_one_block')
@@ -1439,9 +1450,9 @@ func upload_a_file(filepath:String) -> bool:
 
 func download_a_file(filepath:String) -> void:
 	show_main_log('下载中... ...')
-	var taskid:String = generate_task_id()
-	download_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'no')
-	download_obj.download_a_file(filepath)
+	#var taskid:String = generate_task_id()
+	#download_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'no')
+	#download_obj.download_a_file(filepath)
 
 func pull_files_table() -> void:
 	log_window.add_log("[connect_home]->pull_files_table")
@@ -1728,41 +1739,120 @@ func _process(_del)	-> void:
 		update_ui()
 		need_update_ui = false
 	
-	if dis_height <= 0:
-		var a:int = scroll_container.get_v_scroll_bar().max_value
-		dis_height = a - 2000 if a > 2000 else a 
-		print("update dis_height to:%s"%dis_height)
+	#if dis_height <= 0:
+		#var a:int = scroll_container.get_v_scroll_bar().max_value
+		#dis_height = a - 2000 if a > 2000 else a 
+		#print("update dis_height to:%s"%dis_height)
+	#
+	#if abs(scroll_container.scroll_vertical - dis_last_scroll_pos) < 3:
+		#dis_last_scroll_pos = scroll_container.scroll_vertical
+	#else:
+		#print("---%s, %s, %s"%[scroll_container.scroll_vertical, dis_last_scroll_pos, dis_height])
+		#if dis_height - scroll_container.scroll_vertical <= 0:
+			#go_next_pag_try_cnt += 1
+			#print("bottum now! %s, %s, %s"%[scroll_container.scroll_vertical, dis_height, go_next_pag_try_cnt])
+			#if go_next_pag_try_cnt >= 2:# and Time.get_ticks_msec() - go_next_page_delay > 1000 * 0.3:
+				#go_next_page_delay = Time.get_ticks_msec()
+				#go_next_pag_try_cnt = 0
+				#var next_sidx = dis_sidx + 1
+				#if next_sidx < dis_sidx_list.size():
+					#dis_sidx = next_sidx
+					#update_ui()
+					#scroll_container.scroll_vertical = 5
+			#else:
+				#scroll_container.scroll_vertical = dis_height - 5
+		#
+		#elif scroll_container.scroll_vertical <= 0:
+			#go_next_pag_try_cnt += 1
+			#print("top now! %s, %s, %s"%[scroll_container.scroll_vertical, dis_height, go_next_pag_try_cnt])
+			#if go_next_pag_try_cnt >= 2:# and Time.get_ticks_msec() - go_next_page_delay > 1000 * 0.3:
+				#go_next_page_delay = Time.get_ticks_msec()
+				#go_next_pag_try_cnt = 0
+				#var next_sidx = dis_sidx - 1
+				#if next_sidx >= 0:
+					#dis_sidx = next_sidx
+					#update_ui()
+					#scroll_container.scroll_vertical = 5
+			#else:
+				#scroll_container.scroll_vertical = 5
+		#dis_last_scroll_pos = scroll_container.scroll_vertical
 	
-	if abs(scroll_container.scroll_vertical - dis_last_scroll_pos) < 3:
-		dis_last_scroll_pos = scroll_container.scroll_vertical
-	else:
-		print("---%s, %s, %s"%[scroll_container.scroll_vertical, dis_last_scroll_pos, dis_height])
-		if dis_height - scroll_container.scroll_vertical <= 0:
-			go_next_pag_try_cnt += 1
-			print("bottum now! %s, %s, %s"%[scroll_container.scroll_vertical, dis_height, go_next_pag_try_cnt])
-			if go_next_pag_try_cnt >= 2:# and Time.get_ticks_msec() - go_next_page_delay > 1000 * 0.3:
-				go_next_page_delay = Time.get_ticks_msec()
-				go_next_pag_try_cnt = 0
-				var next_sidx = dis_sidx + 1
-				if next_sidx < dis_sidx_list.size():
-					dis_sidx = next_sidx
-					update_ui()
-					scroll_container.scroll_vertical = 5
-			else:
-				scroll_container.scroll_vertical = dis_height - 5
-		
-		elif scroll_container.scroll_vertical <= 0:
-			go_next_pag_try_cnt += 1
-			print("top now! %s, %s, %s"%[scroll_container.scroll_vertical, dis_height, go_next_pag_try_cnt])
-			if go_next_pag_try_cnt >= 2:# and Time.get_ticks_msec() - go_next_page_delay > 1000 * 0.3:
-				go_next_page_delay = Time.get_ticks_msec()
-				go_next_pag_try_cnt = 0
-				var next_sidx = dis_sidx - 1
-				if next_sidx >= 0:
-					dis_sidx = next_sidx
-					update_ui()
-					scroll_container.scroll_vertical = 5
-			else:
-				scroll_container.scroll_vertical = 5
-		dis_last_scroll_pos = scroll_container.scroll_vertical
+func _input(event: InputEvent) -> void:
+	# 只处理鼠标左键或触摸（触摸会映射为鼠标事件）
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT\
+	or event is InputEventScreenTouch:
+		if event.pressed:
+			# 按下：开始拖拽
+			is_dragging = true
+			print('--->pressed')
+			drag_start_pos = get_global_mouse_position()
+			last_scroll = scroll_container.scroll_vertical
+			# 改变光标样式（可选）
+			Input.set_default_cursor_shape(Input.CURSOR_DRAG)
+		else:
+			# 松开：结束拖拽，判断是否触发翻页
+			if is_dragging:
+				_end_drag()
+			is_dragging = false
+			Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+	# 拖拽移动过程：不需要做额外处理，但可以记录偏移（用于实时反馈，可选）
+	elif is_dragging and event is InputEventMouseMotion:
+		# 可选：实时显示拖拽进度（如显示一个小箭头），这里留空
+		pass
+
+## 拖拽结束时调用，根据偏移量和滚动边界决定是否翻页
+func _end_drag():
+	var end_pos = get_global_mouse_position()
+	var drag_delta = end_pos - drag_start_pos
+	var drag_distance = drag_delta.y  # 正=向下拖，负=向上拖
 	
+	# 如果拖拽距离太小，忽略
+	if abs(drag_distance) < drag_threshold:
+		return
+	
+	# 获取当前滚动状态
+	var is_at_top = _is_at_top()
+	var is_at_bottom = _is_at_bottom()
+	var can_scroll = _is_content_scrollable()
+	
+	# 情况1：内容不可滚动 -> 任何方向拖拽都触发翻页
+	if not can_scroll:
+		if drag_distance < 0:  # 向上拖（想看下面的内容）-> 下一页
+			emit_signal("go_next_page")
+		else:                  # 向下拖 -> 上一页
+			emit_signal("go_previous_page")
+		return
+	
+	# 情况2：内容可滚动，只有在边界处并向边界外拖拽才触发翻页
+	# 向上拖拽（负值）且已到达底部 -> 下一页
+	if drag_distance < 0 and is_at_bottom:
+		emit_signal("go_next_page")
+	# 向下拖拽（正值）且已到达顶部 -> 上一页
+	elif drag_distance > 0 and is_at_top:
+		emit_signal("go_previous_page")
+	# 否则：正常滚动，不触发翻页
+	# 注意：不在这里 emit 任何信号
+
+## 判断内容总高度是否超过容器高度（即滚动条是否可见）
+func _is_content_scrollable() -> bool:
+	var v_scroll = scroll_container.get_v_scroll_bar()
+	return v_scroll != null and v_scroll.visible
+
+## 判断当前滚动位置是否到达顶部（允许微小误差）
+func _is_at_top() -> bool:
+	return scroll_container.scroll_vertical <= 0
+
+## 判断当前滚动位置是否到达底部（允许微小误差）
+func _is_at_bottom() -> bool:
+	if not _is_content_scrollable():
+		return false
+	var v_scroll = scroll_container.get_v_scroll_bar()
+	var max_scroll = v_scroll.max_value
+	var view_height = scroll_container.get_rect().size.y
+	# 当滚动条的最大值减去视口高度 ≤ 当前滚动值时，认为到达底部
+	return scroll_container.scroll_vertical >= (max_scroll - view_height - 1)  # 允许1像素误差
+
+## 滚动值变化时更新 last_scroll（用于边界判断的辅助）
+func _on_scroll_value_changed(value: int):
+	print(value)
+	last_scroll = value
