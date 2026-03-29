@@ -88,8 +88,8 @@ func rec_a_datablock(timeout=3) -> Array:
 		if Time.get_ticks_msec() - stime > timeout * 1000:
 			return ['', 'error0']
 	var header:String = ''
-	var data:Array = _socket.get_data(10)
-	if data[0] == Error.OK and data[1].size() > 0:
+	var data:Array = _socket.get_data(10) if _socket else []
+	if _socket and data and  data[0] == Error.OK and data[1].size() > 0:
 		header = data[1].get_string_from_utf8()
 		if header == REQ_HEADER:
 			stime = Time.get_ticks_msec()

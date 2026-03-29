@@ -43,6 +43,7 @@ var vbox_l1_2_setting:VBoxContainer = null
 var hbox_l2:HBoxContainer = null
 var vbox_l3:VBoxContainer = null
 var vbox_l3_vbox:VBoxContainer = null
+var scroll_container:ScrollContainer = null
 var scan_bt:Button = null
 var upload_bt:Button = null
 var delete_bt:Button = null
@@ -79,6 +80,7 @@ var states:Dictionary = {
 	'finish':{'next_state': 'finish', 'func': null},
 }
 
+var current_doing:String = ''
 var current_state:String = 'init'
 var upload_or_delete:String = ''
 var push_obj:TCP_TRANSF_C = null
@@ -92,6 +94,12 @@ var upload_dic:Dictionary = {'uploading':0, 'notuploadyet':0, 'uploaded':0, 'upl
 'dic':{}}
 var delete_dic:Dictionary = {}
 var query_rt:String = ''
+var cur_show_dic:Dictionary = {}
+var dis_top_force_time:int = 0
+var dis_last_scroll_pos:int = 0
+var dis_sidx_list:Array = []
+var dis_sidx:int = 0
+var dis_height:int = 0
 
 var update_show_thread:Thread = null
 var upload_thread:Thread = null
@@ -102,7 +110,9 @@ var search_key:String = ''
 var display_file_dic:Dictionary = {}
 var need_clear_ui:bool = false
 var need_update_ui:bool = false
+var go_next_pag_try_cnt:int = 0
 
+var progress_dialog = null
 var log_window = null
 var debug_on_win:bool = false
 
@@ -111,7 +121,8 @@ func _ready() -> void:
 	debug_on_win = true if OS.get_name() == 'Windows' else false
 	log_window = preload("res://class/log_window.tscn").instantiate()
 	add_child(log_window)
-	
+	#progress_dialog = preload("res://class/progress_dialog.tscn").instantiate()
+	add_child(progress_dialog)
 	if OS.get_name() == 'Android':
 		OS.request_permissions()
 		var p:PackedStringArray = OS.get_granted_permissions()
@@ -737,7 +748,7 @@ func build_gui() -> void:
 	'Others': ['其他类型', hbox_setting_l6_3], }
 	for filetype in DIS_FILE_TYPE:
 		var vbox_this_type:VBoxContainer = VBoxContainer.new()
-		var a:Array = rl.get(filetype, ['', null])
+		var a:Array = rl.get(filetype, ['-', null])
 		var hbox_type_list:Array = []
 		var type_label:Label = Label.new()
 		type_label.name = a[0]
@@ -826,13 +837,13 @@ func build_gui() -> void:
 	
 	### L3
 	## add by add_one_block
-	var scroll_container:ScrollContainer = ScrollContainer.new()
+	scroll_container = ScrollContainer.new()
 	scroll_container.name = 'scroll_container'
 	vbox_l3_vbox = VBoxContainer.new()
 	vbox_l3_vbox.name = 'vbox_l3_vbox'
 	vbox_l3.add_child(scroll_container)
 	scroll_container.add_child(vbox_l3_vbox)
-	scroll_container.custom_minimum_size.y = win_size.y - 20 - hbox_l1.size.y - hbox_l2.size.y
+	scroll_container.custom_minimum_size.y = 2000
 	
 func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 	log_window.add_log('[connect_home]->add_one_block')
@@ -858,7 +869,7 @@ func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 		texture_vbox.name = 'texture_box_%s'%[idy]
 		idy += 1
 		var texture_rec:TextureRect = TextureRect.new()
-		texture_rec.name = "texture_rec"
+		texture_rec.name = "texture_rect_%s"%idy
 		if on_server == 'yes':
 			var texture_on_server:TextureRect = TextureRect.new()
 			texture_on_server.name = 'texture_on_server'
@@ -903,6 +914,17 @@ func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 		grid_container.add_child(texture_vbox)
 		texture_vbox.add_child(texture_rec)
 		texture_vbox.add_child(texture_label)
+		var are2d:Area2D = Area2D.new()
+		are2d.name = 'area2d'
+		are2d.position = Vector2(s / 2, s / 2)
+		var coll2d:CollisionShape2D = CollisionShape2D.new()
+		var recshape:RectangleShape2D = RectangleShape2D.new()
+		recshape.size = Vector2(s, s)
+		coll2d.shape = recshape
+		are2d.add_child(coll2d)
+		texture_rec.add_child(are2d)
+		var filepath_onue:String = filedic.get('ue_dir', '')
+		are2d.connect('input_event', _on_are2d_input.bind(UE_ROOT_DIR.path_join(filepath_onue), texture_rec))
 	vbox_block.add_child(title_label)
 	vbox_block.add_child(grid_container)
 	vbox_l3_vbox.call_deferred('add_child', vbox_block)
@@ -963,25 +985,48 @@ func update_and_show_files_thread() -> void:
 	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
 	var f_table:Dictionary = scan_files_obj.read_db().get('all_files_dic', {})
 	display_file_dic = sort_files_by_method_duration(f_table)
+	get_dis_sidx_list()
 	#call_deferred('clear_ui')
 	#call_deferred('update_ui', file_dic)
 	need_update_ui = true
 	log_window.add_log('[connect_home]->update_and_show_files_thread:thread_finish:%s'%[JSON.stringify(display_file_dic)])
+
+func get_dis_sidx_list() -> void:
+	dis_sidx_list = []
+	var timek_list:Array = display_file_dic.keys()
+	timek_list.sort()
+	var dis_cnt:int = 0
+	for idx in range(len(timek_list)):
+		var timek:String = timek_list[timek_list.size() - idx -1]
+		for eachf in display_file_dic[timek]:
+			if search_key == '' or search_key.to_upper() in eachf.filename.to_upper():
+				dis_cnt += 1
+		if dis_cnt >= 24:
+			print('-->%s, %s, %s'%[timek, idx, dis_cnt])
+			dis_sidx_list.append(idx)
+			dis_cnt = 0
+	print(dis_sidx_list)
 	
 func update_ui() -> void:
-	log_window.add_log('[connect_home]->update_ui')
+	log_window.add_log('[connect_home]->update_ui:%s, %s'%[dis_sidx, dis_sidx_list[dis_sidx]])
 	clear_ui()
 	var timek_list:Array = display_file_dic.keys()
 	timek_list.sort()
-	for idx in range(len(timek_list)):
+	var dis_cnt:int = 0
+	for idx in range(dis_sidx_list[dis_sidx], timek_list.size()):
 		var timek:String = timek_list[timek_list.size() - idx -1]
 		var show_list:Array = []
 		for eachf in display_file_dic[timek]:
 			if search_key == '' or search_key.to_upper() in eachf.filename.to_upper():
 				show_list.append(eachf)
+				dis_cnt += 1
 		if show_list:
-			add_one_block(idx, timek, show_list)
+			add_one_block(dis_sidx, timek, show_list)
+		if dis_cnt >= 24:
+			break
 	show_sub_log()
+	dis_height = 0
+	log_window.add_log('[connect_home]->update_ui end:%s, %s, %s'%[dis_sidx, dis_sidx_list[dis_sidx]], dis_cnt)
 
 func clear_ui() -> void:
 	log_window.add_log('[connect_home]->clear_ui')
@@ -1137,6 +1182,7 @@ func _force_win() -> void:
 
 ### init -> pull_files_table -> scan_files -> deal_files -> update_and_show_files
 func _on_scan_bt_pressed() -> void:
+	current_doing = '扫描中... ...'
 	log_window.add_log('[connect_home]->_on_scan_bt_pressed')
 	current_state = 'init'
 	update_state()
@@ -1144,6 +1190,7 @@ func _on_scan_bt_pressed() -> void:
 
 ### upload_files -> push_files_table -> update_and_show_files
 func _on_upload_bt_pressed() -> void:
+	current_doing = '上传中... ...'
 	log_window.add_log('[connect_home]->_on_upload_bt_pressed:%s'%[current_state])
 	if current_state == 'upload_files':
 		upload_or_delete = 'upload'
@@ -1256,7 +1303,15 @@ func _on_filter_type_toggled(_idx:int, op:OptionButton) -> void:
 func _on_search_bt_pressed(input_line:LineEdit) -> void:
 	search_key = input_line.text
 	update_and_show_files()
-	
+
+func _on_are2d_input(vp:Node, evt:InputEvent, si:int, filepath:String, _texture_rec:TextureRect) -> void:
+	if evt is InputEventScreenTouch and evt.is_pressed():
+		print("_on_are2d_input:%s, %s, %s, %s"%[vp, evt, si, filepath])
+		open_a_file(filepath)
+
+func open_a_file(filepath:String) -> void:
+	if not FileAccess.file_exists(filepath):
+		download_a_file(filepath)
 
 func date_string_to_unix_timestamp(y:String, m:String, d:String) -> int:
 	# 2. 构造初始日期字典
@@ -1369,7 +1424,7 @@ func delete_files() -> void:
 	_on_class_report_result('connect_home', '', 'delete_files', '应清理:%s个, 清理成功%s个, 清理失败%s个'%[
 		delete_dic.keys().size(), success_cnt, failed_cnt], 'FINISH')
 	
-func upload_a_file(filepath) -> bool:
+func upload_a_file(filepath:String) -> bool:
 	var taskid:String = generate_task_id()
 	var upload_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
 	upload_task_dic[taskid] = upload_obj
@@ -1377,6 +1432,12 @@ func upload_a_file(filepath) -> bool:
 	upload_obj.upload_a_file(filepath)
 	logs_dic.message = 'upload_a_file:%s'%[filepath]
 	return true
+
+func download_a_file(filepath:String) -> void:
+	progress_dialog.show_progress('下载中... ...')
+	var taskid:String = generate_task_id()
+	var download_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'no')
+	download_obj.download_a_file(filepath)
 
 func pull_files_table() -> void:
 	log_window.add_log("[connect_home]->pull_files_table")
@@ -1536,7 +1597,11 @@ func show_sub_log() -> void:
 	logs_show_delete.call_deferred("set_text", "%s"%[logs_dic.delete_rt])
 
 func show_main_log(msg:String) -> void:
-	logs_show.call_deferred("set_text", msg)
+	var t:String = logs_show.text + '>' + msg
+	if len(t) > 100:
+		t = t.substr(len(t) - 100)
+	progress_dialog.call_deferred("show_progress", "上传中... ...")
+	#logs_show.call_deferred("set_text", current_doing + t)
 	
 func show_upload_process() -> void:
 	var b:int = 0
@@ -1545,7 +1610,7 @@ func show_upload_process() -> void:
 		b += upload_dic['dic'][eachf]['process']
 		c += upload_dic['dic'][eachf]['size']
 	if c != 0:
-		logs_show.call_deferred("set_text", '[%s], 上传进度%.1f%%'%[current_state, 100.0 * b / c]) 
+		show_main_log('[%s], 上传进度%.1f%%'%[current_state, 100.0 * b / c]) 
 	
 func _from_tcp_transf_class(_who_i_am:String, taskid:String, req_type:String, infor:String, result:String) -> void:
 	if current_state == 'pull_files_table':## pull finish                                       ## 1.1
@@ -1558,7 +1623,7 @@ func _from_tcp_transf_class(_who_i_am:String, taskid:String, req_type:String, in
 		if req_type == 'upload' and taskid in upload_task_dic and result == 'FINISH':       ## 2.1
 			if taskid in upload_task_dic:
 				clear_list.append(upload_task_dic[taskid])
-			#show_main_log("[%s]上传完成:%s"%[current_state, infor])
+			show_main_log("[%s]上传完成:%s"%[current_state, infor])
 			log_window.add_log("[connect_home]->_on_class_report_result:upload file:%s, result:%s"%[infor, result])
 			if result == 'FINISH':
 				upload_dic['dic'][infor]['rt'] = 'uploaded'
@@ -1613,7 +1678,7 @@ func _from_scan_class(_who_i_am:String, taskid:String, req_type:String, infor:St
 			update_state()
 			excute_state()
 	if result == 'START':
-		logs_show.call_deferred("set_text", '[%s], 开始%s:%s'%[current_state,e2z_dic.get(req_type, ''), infor])
+		show_main_log('[%s], 开始%s:%s'%[current_state,e2z_dic.get(req_type, ''), infor])
 
 func _from_connect_home(_who_i_am:String, _taskid:String, req_type:String, infor:String, result:String) -> void:
 	if current_state == 'deal_files':# deal files finish                                        ## !1.3
@@ -1659,4 +1724,35 @@ func _process(_del)	-> void:
 	if need_update_ui:
 		update_ui()
 		need_update_ui = false
+	
+	if dis_height <= 0:
+		dis_height = scroll_container.get_v_scroll_bar().max_value - 2000
+		print("update dis_height to:%s"%dis_height)
+	
+	if abs(scroll_container.scroll_vertical - dis_last_scroll_pos) < 3:
+		pass
+	else:
+		print("---%s, %s"%[scroll_container.scroll_vertical, dis_height])
+		if dis_height - scroll_container.scroll_vertical <= 0:
+			go_next_pag_try_cnt += 1
+			print("bottum now! %s, %s, %s"%[scroll_container.scroll_vertical, dis_height, go_next_pag_try_cnt])
+			if go_next_pag_try_cnt >= 2:
+				dis_sidx = min(dis_sidx_list.size() - 1, dis_sidx + 1)
+				update_ui()
+				scroll_container.scroll_vertical = 5
+				go_next_pag_try_cnt = 0
+			else:
+				scroll_container.scroll_vertical = dis_height - 5
+		
+		elif scroll_container.scroll_vertical <= 0:
+			go_next_pag_try_cnt += 1
+			print("top now! %s, %s, %s"%[scroll_container.scroll_vertical, dis_height, go_next_pag_try_cnt])
+			if go_next_pag_try_cnt >= 2:
+				dis_sidx = max(0, dis_sidx - 1)
+				update_ui()
+				scroll_container.scroll_vertical = 5
+				go_next_pag_try_cnt = 0
+			else:
+				scroll_container.scroll_vertical = 5
+		dis_last_scroll_pos = scroll_container.scroll_vertical
 	
