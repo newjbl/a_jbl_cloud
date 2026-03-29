@@ -111,8 +111,8 @@ var display_file_dic:Dictionary = {}
 var need_clear_ui:bool = false
 var need_update_ui:bool = false
 var go_next_pag_try_cnt:int = 0
+var go_next_page_delay:int = 0
 
-var progress_dialog = null
 var log_window = null
 var debug_on_win:bool = false
 
@@ -121,8 +121,6 @@ func _ready() -> void:
 	debug_on_win = true if OS.get_name() == 'Windows' else false
 	log_window = preload("res://class/log_window.tscn").instantiate()
 	add_child(log_window)
-	#progress_dialog = preload("res://class/progress_dialog.tscn").instantiate()
-	add_child(progress_dialog)
 	if OS.get_name() == 'Android':
 		OS.request_permissions()
 		var p:PackedStringArray = OS.get_granted_permissions()
@@ -996,16 +994,22 @@ func get_dis_sidx_list() -> void:
 	var timek_list:Array = display_file_dic.keys()
 	timek_list.sort()
 	var dis_cnt:int = 0
-	for idx in range(len(timek_list)):
+	var idx:int = 0
+	var sidx:int = 0
+	while idx <=len(timek_list):
 		var timek:String = timek_list[timek_list.size() - idx -1]
 		for eachf in display_file_dic[timek]:
 			if search_key == '' or search_key.to_upper() in eachf.filename.to_upper():
 				dis_cnt += 1
 		if dis_cnt >= 24:
 			print('-->%s, %s, %s'%[timek, idx, dis_cnt])
-			dis_sidx_list.append(idx)
+			dis_sidx_list.append(sidx)
+			sidx = idx + 1
 			dis_cnt = 0
-	print(dis_sidx_list)
+		idx += 1
+	if dis_cnt < 24 and dis_sidx_list == []:
+		dis_sidx_list = [0]
+	print('dis_sidx_list is:', dis_sidx_list)
 	
 func update_ui() -> void:
 	log_window.add_log('[connect_home]->update_ui:%s, %s'%[dis_sidx, dis_sidx_list[dis_sidx]])
@@ -1434,9 +1438,9 @@ func upload_a_file(filepath:String) -> bool:
 	return true
 
 func download_a_file(filepath:String) -> void:
-	progress_dialog.show_progress('下载中... ...')
+	show_main_log('下载中... ...')
 	var taskid:String = generate_task_id()
-	var download_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'no')
+	download_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'no')
 	download_obj.download_a_file(filepath)
 
 func pull_files_table() -> void:
@@ -1600,8 +1604,7 @@ func show_main_log(msg:String) -> void:
 	var t:String = logs_show.text + '>' + msg
 	if len(t) > 100:
 		t = t.substr(len(t) - 100)
-	progress_dialog.call_deferred("show_progress", "上传中... ...")
-	#logs_show.call_deferred("set_text", current_doing + t)
+	logs_show.call_deferred("set_text", current_doing + t)
 	
 func show_upload_process() -> void:
 	var b:int = 0
@@ -1726,32 +1729,39 @@ func _process(_del)	-> void:
 		need_update_ui = false
 	
 	if dis_height <= 0:
-		dis_height = scroll_container.get_v_scroll_bar().max_value - 2000
+		var a:int = scroll_container.get_v_scroll_bar().max_value
+		dis_height = a - 2000 if a > 2000 else a 
 		print("update dis_height to:%s"%dis_height)
 	
 	if abs(scroll_container.scroll_vertical - dis_last_scroll_pos) < 3:
-		pass
+		dis_last_scroll_pos = scroll_container.scroll_vertical
 	else:
-		print("---%s, %s"%[scroll_container.scroll_vertical, dis_height])
+		print("---%s, %s, %s"%[scroll_container.scroll_vertical, dis_last_scroll_pos, dis_height])
 		if dis_height - scroll_container.scroll_vertical <= 0:
 			go_next_pag_try_cnt += 1
 			print("bottum now! %s, %s, %s"%[scroll_container.scroll_vertical, dis_height, go_next_pag_try_cnt])
-			if go_next_pag_try_cnt >= 2:
-				dis_sidx = min(dis_sidx_list.size() - 1, dis_sidx + 1)
-				update_ui()
-				scroll_container.scroll_vertical = 5
+			if go_next_pag_try_cnt >= 2:# and Time.get_ticks_msec() - go_next_page_delay > 1000 * 0.3:
+				go_next_page_delay = Time.get_ticks_msec()
 				go_next_pag_try_cnt = 0
+				var next_sidx = dis_sidx + 1
+				if next_sidx < dis_sidx_list.size():
+					dis_sidx = next_sidx
+					update_ui()
+					scroll_container.scroll_vertical = 5
 			else:
 				scroll_container.scroll_vertical = dis_height - 5
 		
 		elif scroll_container.scroll_vertical <= 0:
 			go_next_pag_try_cnt += 1
 			print("top now! %s, %s, %s"%[scroll_container.scroll_vertical, dis_height, go_next_pag_try_cnt])
-			if go_next_pag_try_cnt >= 2:
-				dis_sidx = max(0, dis_sidx - 1)
-				update_ui()
-				scroll_container.scroll_vertical = 5
+			if go_next_pag_try_cnt >= 2:# and Time.get_ticks_msec() - go_next_page_delay > 1000 * 0.3:
+				go_next_page_delay = Time.get_ticks_msec()
 				go_next_pag_try_cnt = 0
+				var next_sidx = dis_sidx - 1
+				if next_sidx >= 0:
+					dis_sidx = next_sidx
+					update_ui()
+					scroll_container.scroll_vertical = 5
 			else:
 				scroll_container.scroll_vertical = 5
 		dis_last_scroll_pos = scroll_container.scroll_vertical
