@@ -1,5 +1,6 @@
 extends Node2D
 
+## cfg of service
 var CFG_PATH:String = "user://db/cfg.ini"
 var SETTING_PATH:String = "user://db/setting.ini"
 var ICON_DIR:String = "user://db/icon/"
@@ -11,6 +12,7 @@ var DOWNLOAD_PORT:int = 7777
 var USR:String = ''
 var PSD:String = ''
 
+## cfg of gui
 var DIS_SIZE:String = 'DAY'
 var DIS_DURATION:Array = [0, 4290604800]
 var SORT_METHOD:String = 'NAME_AZ'# NAME_ZA, TIME_AZ, TIME_ZA, SIZE_AZ, SIZE_ZA
@@ -40,6 +42,7 @@ var win_size:Vector2i = Vector2i.ZERO
 var hbox_l1:HBoxContainer = null
 var vbox_l1_1_login:VBoxContainer = null
 var vbox_l1_2_setting:VBoxContainer = null
+var vbox_l1_3_uploadlist:VBoxContainer = null
 var hbox_l2:HBoxContainer = null
 var vbox_l3:VBoxContainer = null
 var vbox_l3_vbox:VBoxContainer = null
@@ -47,70 +50,27 @@ var scroll_container:ScrollContainer = null
 var scan_bt:Button = null
 var upload_bt:Button = null
 var delete_bt:Button = null
+
+## cfg of show
 var logs_show:Label = null
 var logs_show_scan:Label = null
 var logs_show_upload:Label = null
 var logs_show_delete:Label = null
-var logs_dic:Dictionary = {
-	'pre_current_status':'', 
-	'current_status':'', 
-	'scan_rt':'', 
-	'upload_rt':'', 
-	'download_rt':'',
-	'delete_rt':'',
-	'message':''}
 var e2z_dic:Dictionary = {
 	'upload':'上传',
 	'download':'下载',
-	#'login':'登录',
+	'login':'登录',
 	'scan':'扫描',
 }
 var TIME_ITEM:Array = [1986, 2106]
 
-var states:Dictionary = {
-	'init':{'next_state': 'pull_files_table', 'func': null},
-	'pull_files_table':{'next_state': 'scan_files', 'func': pull_files_table},
-	'scan_files':{'next_state': 'deal_files', 'func': scan_files},
-	'deal_files':{'next_state': 'upload_files', 'func': deal_files},
-	'upload_files':{'next_state': 'query_files', 'func': upload_files},
-	'query_files':{'next_state': 'delete_files', 'func': query_files},
-	'delete_files':{'next_state': 'push_files_table', 'func': delete_files},
-	'push_files_table':{'next_state': 'update_and_show_files', 'func': push_files_table},
-	'update_and_show_files':{'next_state': 'finish', 'func': update_and_show_files},
-	'finish':{'next_state': 'finish', 'func': null},
-}
-
+## cfg of status control
 var current_doing:String = ''
-var current_state:String = 'init'
-var upload_or_delete:String = ''
 var push_obj:TCP_TRANSF_C = null
 var pull_obj:TCP_TRANSF_C = null
-var upload_task_dic:Dictionary = {}
 var download_obj:TCP_TRANSF_C = null
 var query_obj:TCP_TRANSF_C = null
 var scan_files_obj:SCAN_C = null
-
-var upload_dic:Dictionary = {'uploading':0, 'notuploadyet':0, 'uploaded':0, 'uploadfailed':0,
-'dic':{}}
-var delete_dic:Dictionary = {}
-var query_rt:String = ''
-var cur_show_dic:Dictionary = {}
-
-var dis_top_force_time:int = 0
-var dis_last_scroll_pos:int = 0
-var dis_sidx_list:Array = []
-var dis_sidx:int = 0
-var dis_height:int = 0
-## 触发翻页的最小拖拽距离（像素）
-var drag_threshold: float = 50.0
-## 是否正在拖拽（鼠标/手指按下后未松开）
-var is_dragging: bool = false
-## 拖拽开始时的全局位置
-var drag_start_pos: Vector2 = Vector2.ZERO
-## 上一次滚动位置（用于检测是否到达边界）
-var last_scroll: int = 0
-
-
 var update_show_thread:Thread = null
 var upload_thread:Thread = null
 var update_files_aupload_thread:Thread = null
@@ -120,13 +80,36 @@ var search_key:String = ''
 var display_file_dic:Dictionary = {}
 var need_clear_ui:bool = false
 var need_update_ui:bool = false
+
+## steps dic
+var scan_file_rt:Dictionary = {}
+var upload_dic:Dictionary = {}
+var download_file_rt:Dictionary = {}
+var delete_dic:Dictionary = {}
+
+## show in multil page
+var dis_sidx_list:Array = []
+var dis_sidx:int = 0
+var dis_height:int = 0
 var go_next_pag_try_cnt:int = 0
 var go_next_page_delay:int = 0
 
+## touch control
+var drag_threshold: float = 50.0
+var long_press_threshold:float = 0.5
+var is_pressing:bool = false
+var is_long_pressing:bool = false
+var press_start_pos:Vector2 = Vector2.ZERO
+var last_scroll: int = 0
+var texture_touch_dic:Dictionary = {}
+
+var comtimer:Timer = null 
 var log_window = null
 var debug_on_win:bool = false
 
 func _ready() -> void:
+	comtimer = $Timer
+	comtimer.connect("timeout", _on_long_press_timeout)
 	$bd_color.color = Color(0.818, 0.818, 0.818, 1.0)
 	debug_on_win = true if OS.get_name() == 'Windows' else false
 	log_window = preload("res://class/log_window.tscn").instantiate()
@@ -276,6 +259,11 @@ func build_gui() -> void:
 	vbox_l1_2_setting.visible = false
 	vbox_l1_2_setting.name = 'vbox_l1_2_setting'
 	
+	vbox_l1_3_uploadlist = VBoxContainer.new()
+	vbox_l1_3_uploadlist.size = Vector2i(win_size.x - 5, 500)
+	vbox_l1_3_uploadlist.visible = false
+	vbox_l1_3_uploadlist.name = 'vbox_l1_3_uploadlist'
+	
 	hbox_l2 = HBoxContainer.new()
 	hbox_l2.size = Vector2i(win_size.x - 5, 40)
 	hbox_l2.name = 'L2'
@@ -291,6 +279,7 @@ func build_gui() -> void:
 	vbox_top.add_child(hbox_l1)
 	vbox_top.add_child(vbox_l1_1_login)
 	vbox_top.add_child(vbox_l1_2_setting)
+	vbox_top.add_child(vbox_l1_3_uploadlist)
 	vbox_top.add_child(hbox_l2)
 	vbox_top.add_child(vbox_l3)
 	
@@ -814,6 +803,26 @@ func build_gui() -> void:
 	line2.add_point(Vector2i(0, 0))
 	line2.add_point(Vector2i(win_size.x, 0))
 	hbox_setting_le.add_child(line2)
+	
+	### vbox_l1_3_uploadlist
+	var uploadlistc_ctl:HBoxContainer = HBoxContainer.new()
+	var bt_hide:Button = Button.new()
+	bt_hide.name = 'bt_hide'
+	bt_hide.text = '隐藏下载界面'
+	bt_hide.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var bt_stopall:Button = Button.new()
+	bt_stopall.name = 'bt_stopall'
+	bt_stopall.text = '停止所有下载'
+	bt_stopall.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var bt_retryall:Button = Button.new()
+	bt_retryall.name = 'bt_retryall'
+	bt_retryall.text = '重试所有下载'
+	bt_retryall.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	uploadlistc_ctl.add_child(bt_hide)
+	uploadlistc_ctl.add_child(bt_stopall)
+	uploadlistc_ctl.add_child(bt_retryall)
+	vbox_l1_3_uploadlist.add_child(uploadlistc_ctl)
+	### auto update
 		
 	### L2
 	var filter_type:OptionButton = OptionButton.new()
@@ -1018,9 +1027,9 @@ func get_dis_sidx_list() -> void:
 			sidx = idx + 1
 			dis_cnt = 0
 		idx += 1
-	if dis_cnt < 24 and dis_sidx_list == []:
-		dis_sidx_list = [0]
-	print('dis_sidx_list is:', dis_sidx_list)
+	if dis_cnt < 24:
+		dis_sidx_list.append(sidx)
+	print('[connect_home]get_dis_sidx_list:dis_sidx_list is:', dis_sidx_list)
 	
 func update_ui() -> void:
 	log_window.add_log('[connect_home]->update_ui:%s, %s'%[dis_sidx, dis_sidx_list[dis_sidx]])
@@ -1130,7 +1139,6 @@ poolmax=10, loopmax=3):
 	var _PSD:String = psd_input.text
 	var taskid:String = generate_task_id()
 	var upload_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, _SERVER_IP, _UPLOAD_PORT, _USR, _PSD, 3, 'no')
-	upload_task_dic[taskid] = upload_obj
 	upload_obj.connect_to_server(poolmax)
 	r = upload_obj.login_do(loopmax)
 	if r:
@@ -1141,7 +1149,7 @@ poolmax=10, loopmax=3):
 		login_title_label.label_settings = label_setting_font_red
 		return false
 	test_bt.text = '测试连接'
-	upload_obj.disconnect_to_server()
+	upload_obj._destory()
 	return r
 
 func _on_setting_save_bt_pressed(setting_save_bt:Button) -> void:
@@ -1197,31 +1205,21 @@ func _force_win() -> void:
 
 ### init -> pull_files_table -> scan_files -> deal_files -> update_and_show_files
 func _on_scan_bt_pressed() -> void:
-	current_doing = '扫描中... ...'
 	log_window.add_log('[connect_home]->_on_scan_bt_pressed')
-	current_state = 'init'
-	update_state()
-	excute_state()
+	scan__start_scan()
 
 ### upload_files -> push_files_table -> update_and_show_files
 func _on_upload_bt_pressed() -> void:
-	current_doing = '上传中... ...'
-	log_window.add_log('[connect_home]->_on_upload_bt_pressed:%s'%[current_state])
-	if current_state == 'upload_files':
-		upload_or_delete = 'upload'
-		excute_state()
+	log_window.add_log('[connect_home]->_on_upload_bt_pressed')
+	if upload_dic.get('notuploadyet', 0) > 0:
+		upload__start_upload()
 	else:
-		log_window.add_log('[connect_home]->_on_scan_bt_pressed:please do the scan first')
+		log_window.add_log('[connect_home]->_on_upload_bt_pressed:no need upload')
+		show_main_log('无需上传!')
 
 ### query_files -> delete_files -> push_files_table -> update_and_show_files
 func _on_delete_bt_pressed() -> void:
 	log_window.add_log('[connect_home]->_on_delete_bt_pressed')
-	if current_state in ['update_and_show_files', 'upload_files']:
-		upload_or_delete = 'delete'
-		current_state = 'query_files'
-		excute_state()
-	else:
-		log_window.add_log('[connect_home]->_on_scan_bt_pressed:please do the scan first')
 	
 func _on_scan_dir_cb_toggled(idx:int, cb:CheckBox) -> void:
 	log_window.add_log('[connect_home]->_on_on_scan_dir_cb_toggled:%s, %s'%[idx, cb.name])
@@ -1321,12 +1319,19 @@ func _on_search_bt_pressed(input_line:LineEdit) -> void:
 
 func _on_are2d_input(vp:Node, evt:InputEvent, si:int, filepath:String, _texture_rec:TextureRect) -> void:
 	if evt is InputEventScreenTouch and evt.is_pressed():
-		print("_on_are2d_input:%s, %s, %s, %s"%[vp, evt, si, filepath])
-		open_a_file(filepath)
+		print("_on_are2d_input:%s, %s, %s, %s, %s"%[vp, evt, si, filepath, evt.positon])
+		texture_touch_dic = {'filepath': filepath, 'pos': evt.position}
 
 func open_a_file(filepath:String) -> void:
 	if not FileAccess.file_exists(filepath):
 		download_a_file(filepath)
+	if FileAccess.file_exists(filepath):
+		open_a_file_now(filepath)
+	else:
+		show_main_log('文件不存在!')
+
+func open_a_file_now(_filepath:String) -> void:
+	print('open_a_file_now')
 
 func date_string_to_unix_timestamp(y:String, m:String, d:String) -> int:
 	# 2. 构造初始日期字典
@@ -1351,79 +1356,13 @@ func get_days_in_month(month: int, year: int) -> int:
 	else:
 		return 31
 ################################# for functions ##############################
-
-func query_files() -> void:
-	log_window.add_log("[connect_home]->query_files")
-	var taskid:String = generate_task_id()
-	query_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
-	query_obj.connect("report_result", _on_class_report_result)
-	var filedic:Dictionary = {}
-	for eachf in delete_dic:
-		var file_md5:String = FileAccess.get_md5(eachf)
-		var filename:String = eachf.replace(UE_ROOT_DIR + '/', '')
-		filedic[filename] = file_md5
-	query_obj.query_files(filedic)
-	
-func deal_files() -> void:
-	var taskid:String = generate_task_id()
-	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
-	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
-	var files_dic:Dictionary = scan_files_obj.read_db()
-	var all_files_dic:Dictionary = files_dic.get("all_files_dic", {})
-	for eachpath in all_files_dic:
-		var on_server = all_files_dic[eachpath]['on_server']
-		var on_ue = all_files_dic[eachpath]['on_ue']
-		if on_server == 'no' and on_ue == 'yes':#need upload
-			if eachpath not in upload_dic['dic']:
-				upload_dic['dic'][eachpath] = {}
-			upload_dic['dic'][eachpath]['rt'] = 'notuploadyet'
-			upload_dic['dic'][eachpath]['process'] = 0
-			upload_dic['dic'][eachpath]['size'] = 0
-			upload_dic['notuploadyet'] += 1
-		elif on_ue == 'yes' and on_server == 'yes':#need check if need delete on UE
-			if if_need_delete_ue_file(all_files_dic[eachpath], 7):
-				delete_dic[eachpath] = 'not delete yet'
-	log_window.add_log("[connect_home]->deal_files:%s"%[JSON.stringify(upload_dic)])
-	_on_class_report_result('connect_home', '', 'deal_files', '', 'FINISH')
-	
-func upload_files() -> void:
-	if upload_thread:
-		upload_thread.wait_to_finish()
-	upload_thread = Thread.new()
-	upload_thread.start(upload_files_thread)
-
-func upload_files_thread() -> void:
-	log_window.add_log("[connect_home]->upload_files_thread")
-	if upload_dic['notuploadyet'] == 0:
-		log_window.add_log("[connect_home]->upload_files_thread:no files need upload")
-		_on_class_report_result('connect_home', '', 'upload_files', '', 'FINISH')
-	while upload_dic['notuploadyet'] > 0:
-		var need_upload_cnt:int = max(0, 5 - upload_dic['uploading'])
-		if need_upload_cnt <= 0:
-			continue
-		log_window.add_log("[connect_home]->upload_files_thread:current upload_dic:%s"%[JSON.stringify(upload_dic['dic'])])
-		for filepath in upload_dic['dic']:
-			if upload_dic['dic'][filepath]['rt'] != 'notuploadyet':
-				continue
-			upload_dic['dic'][filepath]['rt'] = 'uploading'
-			upload_dic['uploading'] += 1
-			upload_dic['notuploadyet'] -= 1
-			logs_dic.message = '开始上传:%s'%filepath
-			show_sub_log()
-			log_window.add_log("[connect_home]->upload_files_thread:will upload:%s"%filepath)
-			upload_a_file(filepath)
-			need_upload_cnt -= 1
-			if need_upload_cnt <= 0:
-				break
-	log_window.add_log("[connect_home]->upload_files_thread:thread_finish")
-
 func delete_files() -> void:
 	var upload_again_list:Array = []
 	var upload_again_list_:Array = []
 	var success_cnt:int = 0
 	var failed_cnt:int = 0
-	if query_rt != 'all ok':
-		upload_again_list_ = query_rt.split(';')
+	#if query_rt != 'all ok':
+	#	upload_again_list_ = query_rt.split(';')
 	for eachf in upload_again_list_:
 		upload_again_list.append(UE_ROOT_DIR.path_join(eachf))
 	for filepath in delete_dic:
@@ -1436,39 +1375,14 @@ func delete_files() -> void:
 			delete_dic[filepath] = 'deleted'
 			success_cnt += 1
 	update_files_table_after_delete()
-	_on_class_report_result('connect_home', '', 'delete_files', '应清理:%s个, 清理成功%s个, 清理失败%s个'%[
-		delete_dic.keys().size(), success_cnt, failed_cnt], 'FINISH')
-	
-func upload_a_file(filepath:String) -> bool:
-	var taskid:String = generate_task_id()
-	var upload_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
-	upload_task_dic[taskid] = upload_obj
-	upload_obj.connect("report_result", _on_class_report_result)
-	upload_obj.upload_a_file(filepath)
-	logs_dic.message = 'upload_a_file:%s'%[filepath]
-	return true
+	#_on_class_report_result('connect_home', '', 'delete_files', '应清理:%s个, 清理成功%s个, 清理失败%s个'%[
+	#	delete_dic.keys().size(), success_cnt, failed_cnt], 'FINISH')
 
-func download_a_file(filepath:String) -> void:
+func download_a_file(_filepath:String) -> void:
 	show_main_log('下载中... ...')
 	#var taskid:String = generate_task_id()
 	#download_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'no')
 	#download_obj.download_a_file(filepath)
-
-func pull_files_table() -> void:
-	log_window.add_log("[connect_home]->pull_files_table")
-	var taskid:String = generate_task_id()
-	pull_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'yes')
-	pull_obj.connect("report_result", _on_class_report_result)
-	var pull_file = UE_ROOT_DIR.path_join('files.txt')
-	pull_obj.download_a_file(pull_file)
-
-func push_files_table() -> void:
-	log_window.add_log("[connect_home]->push_files_table")
-	var taskid:String = generate_task_id()
-	push_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'yes')
-	push_obj.connect("report_result", _on_class_report_result)
-	var push_file = UE_ROOT_DIR.path_join('files.txt')
-	push_obj.upload_a_file(push_file)
 
 func update_files_table_after_upload() -> void:
 	if update_files_aupload_thread:
@@ -1509,15 +1423,7 @@ func update_files_table_after_delete_thread() -> void:
 		if eachfile in f_table:
 			f_table[eachfile]['on_ue'] = 'no'
 	scan_files_obj.write_db({'all_files_dic': f_table, 'rename_files_dic': d_table})
-	
-func scan_files() -> void:
-	log_window.add_log("[connect_home]->scan_files")
-	var taskid:String = generate_task_id()
-	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
-	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
-	scan_files_obj.connect("scan_finished", _on_class_report_result)
-	scan_files_obj.scan_a_dir(UE_ROOT_DIR)
-	
+		
 func save_cfg():
 	var cfg_infor:String = "SERVER_IP:%s\nUPLOAD_PORT:%s\nDOWNLOAD_PORT:%s\nUSR:%s\nPSD:%s\n"%[SERVER_IP, UPLOAD_PORT, DOWNLOAD_PORT, USR, PSD]
 	var dir:String = CFG_PATH.get_base_dir()
@@ -1594,27 +1500,20 @@ func if_need_delete_ue_file(file_dic:Dictionary, day:int=7) -> bool:
 		return true
 	return false
 
-func update_state() -> void:
-	var next_state = states.get(current_state, {}).get('next_state', '')
-	if next_state != '':
-		log_window.add_log("[connect_home]->update_state:%s>%s"%[current_state, next_state])
-		current_state = next_state
-
-func excute_state() -> void:
-	var current_func = states.get(current_state, {}).get('func', null)
-	if current_func != null:
-		logs_dic.current_status = current_state
-		current_func.call()
-
 func show_sub_log() -> void:
-	logs_show_scan.call_deferred("set_text", "%s"%[logs_dic.scan_rt])
-	logs_show_upload.call_deferred("set_text", "%s"%[logs_dic.upload_rt])
-	logs_show_delete.call_deferred("set_text", "%s"%[logs_dic.delete_rt])
+	if 'add' in scan_file_rt:
+		logs_show_scan.call_deferred("set_text", "%s"%['扫描:%s', '新增:%s', '修改:%s', '可删除:%s'%[
+			scan_file_rt.all, scan_file_rt.add, scan_file_rt.mod, scan_file_rt.del]])
+	if upload_dic.get('notuploadyet', 0) + upload_dic.get('uploading', 0) + \
+		upload_dic.get('uploaded', 0) + upload_dic.get('uploadfailed', 0) > 0:
+		logs_show_upload.call_deferred("set_text", "%s"%['应上传:%s, 应上传:%s, 应上传:%s, 应上传:%s'%[
+			upload_dic.notuploadyet, upload_dic.uploading, upload_dic.uploaded, upload_dic.uploadfailed]])
+	#logs_show_delete.call_deferred("set_text", "%s"%[logs_dic.delete_rt])
 
 func show_main_log(msg:String) -> void:
-	var t:String = logs_show.text + '>' + msg
-	if len(t) > 100:
-		t = t.substr(len(t) - 100)
+	var t:String = logs_show.text.replace(current_doing, '') + '>' + msg
+	if len(t) > 70:
+		t = t.substr(len(t) - 70)
 	logs_show.call_deferred("set_text", current_doing + t)
 	
 func show_upload_process() -> void:
@@ -1624,25 +1523,150 @@ func show_upload_process() -> void:
 		b += upload_dic['dic'][eachf]['process']
 		c += upload_dic['dic'][eachf]['size']
 	if c != 0:
-		show_main_log('[%s], 上传进度%.1f%%'%[current_state, 100.0 * b / c]) 
+		show_main_log('%.1f%%'%[100.0 * b / c]) 
+
+############################################ function control begin #################################
+## 1 ### init -> pull_files_table -> scan_files -> deal_files -> update_and_show_files
+func scan__start_scan() -> void:
+	current_doing = '【扫描】'
+	log_window.add_log('[connect_home]->scan__start_scan')
+	show_main_log('开始扫描!')
+	scan_file_rt = {}
+	upload_dic = {'notuploadyet':0, 'uploading': 0, 'uploaded':0, 'uploadfailed':0, 'dic':{}}
+	scan__start_pull_files_table()
+
+func scan__start_pull_files_table() -> void:
+	log_window.add_log('[connect_home]->scan__start_pull_files_table')
+	show_main_log('拉取文件列表')
+	var taskid:String = generate_task_id()
+	var _pull_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'yes')
+	_pull_obj.connect("report_result", scan__end_pull_files_table.bind(taskid, _pull_obj))
+	var pull_file = UE_ROOT_DIR.path_join('files.txt')
+	pull_obj.download_a_file(pull_file)
 	
-func _from_tcp_transf_class(_who_i_am:String, taskid:String, req_type:String, infor:String, result:String) -> void:
-	if current_state == 'pull_files_table':## pull finish                                       ## 1.1
-		if req_type == 'download' and taskid == pull_obj.taskid and result in ['FINISH', 'ERROR7']:
-			clear_list.append(pull_obj)
-			show_main_log("[%s]同步文件列表完成"%current_state)
-			update_state()
-			excute_state()
-	elif current_state == 'upload_files':## upload one file finish
-		if req_type == 'upload' and taskid in upload_task_dic and result == 'FINISH':       ## 2.1
-			if taskid in upload_task_dic:
-				clear_list.append(upload_task_dic[taskid])
-			show_main_log("[%s]上传完成:%s"%[current_state, infor])
-			log_window.add_log("[connect_home]->_on_class_report_result:upload file:%s, result:%s"%[infor, result])
+func scan__end_pull_files_table(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
+	log_window.add_log("[connect_home]->scan__end_pull_files_table:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
+	if who_i_am == 'tcp_transf_class' and taskid == _taskid and req_type == 'download' and result in ['FINISH', 'ERROR7']:
+		show_main_log('拉取完成')
+		scan__start_scan_files()
+		clear_list.append(_obj)
+	
+func scan__start_scan_files() -> void:
+	log_window.add_log('[connect_home]->scan__start_scan_files')
+	show_main_log('开始扫描件...')
+	var taskid:String = generate_task_id()
+	var _scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
+	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
+	_scan_files_obj.connect("scan_finished", scan__end_scan_files.bind(taskid, _scan_files_obj))
+	_scan_files_obj.scan_a_dir(UE_ROOT_DIR)
+	
+func scan__end_scan_files(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:SCAN_C) -> void:
+	log_window.add_log("[connect_home]->scan__end_scan_files:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
+	if who_i_am == 'scan_class' and taskid == _taskid and req_type == 'scan' and result == 'FINISH':
+		scan_file_rt = JSON.parse_string(infor)
+		show_sub_log()
+		scan__start_deal_files()
+		clear_list.append(_obj)
+		show_main_log('扫描文件完成!')
+		
+func scan__start_deal_files() -> void:
+	log_window.add_log('[connect_home]->scan__start_deal_files')
+	show_main_log('整理文件!')
+	var taskid:String = generate_task_id()
+	var _scan_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
+	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
+	var files_dic:Dictionary = _scan_obj.read_db()
+	var all_files_dic:Dictionary = files_dic.get("all_files_dic", {})
+	_scan_obj._destory()
+	for eachpath in all_files_dic:
+		var on_server = all_files_dic[eachpath]['on_server']
+		var on_ue = all_files_dic[eachpath]['on_ue']
+		if on_server == 'no' and on_ue == 'yes':#need upload
+			if eachpath not in upload_dic['dic']:
+				upload_dic['dic'][eachpath] = {}
+			upload_dic['dic'][eachpath]['rt'] = 'notuploadyet'
+			upload_dic['dic'][eachpath]['process'] = 0
+			upload_dic['dic'][eachpath]['size'] = 0
+			upload_dic['notuploadyet'] += 1
+		elif on_ue == 'yes' and on_server == 'yes':#need check if need delete on UE
+			if if_need_delete_ue_file(all_files_dic[eachpath], 7):
+				delete_dic[eachpath] = 'not delete yet'
+	scan__end_scan()
+	
+func scan__end_scan() -> void:
+	log_window.add_log('[connect_home]->scan__end_scan')
+	show_main_log('扫描完成!')
+	show_sub_log()
+	update_and_show_files()
+	
+## 2 ###         upload_files -> push_files_table -> update_and_show_files
+func upload__start_upload() -> void:
+	current_doing = '【上传】'
+	log_window.add_log('[connect_home]->upload__start_upload')
+	show_main_log('开始上传!')
+	show_sub_log()
+	if upload_thread:
+		upload_thread.wait_to_finish()
+	upload_thread = Thread.new()
+	upload_thread.start(upload__start_upload_thread)
+	#build_upload_task()
+	
+func upload__start_upload_thread() -> void:
+	log_window.add_log('[connect_home]->upload__start_upload_thread')
+	while upload_dic['notuploadyet'] > 0:
+		var need_upload_cnt:int = max(0, 5 - upload_dic['uploading'])
+		if need_upload_cnt <= 0:
+			continue
+		log_window.add_log("[connect_home]->upload_files_thread:current upload_dic:%s"%[JSON.stringify(upload_dic['dic'])])
+		for filepath in upload_dic['dic']:
+			if upload_dic['dic'][filepath]['rt'] != 'notuploadyet':
+				continue
+			upload_dic['dic'][filepath]['rt'] = 'uploading'
+			upload_dic['uploading'] += 1
+			upload_dic['notuploadyet'] -= 1
+			show_sub_log()
+			log_window.add_log("[connect_home]->upload_files_thread:will upload:%s"%filepath)
+			upload__upload_a_file(filepath)
+			need_upload_cnt -= 1
+			if need_upload_cnt <= 0:
+				break
+	log_window.add_log("[connect_home]->upload_files_thread:thread_finish")
+
+func upload__upload_a_file(filepath:String) -> bool:
+	var taskid:String = generate_task_id()
+	var upload_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
+	upload_obj.connect("report_result", upload__receive_upload_finish.bind(taskid, upload_obj))
+	upload_obj.upload_a_file(filepath)
+	return true
+	
+func upload__receive_upload_finish(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
+	log_window.add_log("[connect_home]->scan__end_scan_files:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
+	if req_type == 'upload' and taskid == _taskid:
+		if result == 'START' and req_type in e2z_dic:
+			pass
+			show_main_log('开始%s:%s'%[e2z_dic.get(req_type, ''), infor])
+		elif result == 'PROCESS':
+			var a:Array = infor.split(';')
+			var filepath:String = a[1]
+			if filepath in upload_dic['dic']:
+				upload_dic['dic'][filepath]['process'] = a[0].to_int()
+				upload_dic['dic'][filepath]['size'] = a[2].to_int()
+			show_upload_process()	
+		elif result == 'FAILED':
+			show_main_log('失败!')
+			log_window.add_log("[connect_home]->upload__receive_upload_finish:failed!!!!!!!")
+		elif result in ['FINISH', 'ERROR2']:
+			clear_list.append(_obj)
+			log_window.add_log("[connect_home]->upload__receive_upload_finish:upload file:%s, result:%s"%[infor, result])
+			if result == 'FINISH':
+				show_main_log('上传完成:%s'%[infor])
+			else:
+				show_main_log('已经存在不需要上传:%s'%[infor])
 			if result == 'FINISH':
 				upload_dic['dic'][infor]['rt'] = 'uploaded'
 				upload_dic['dic'][infor]['process'] = upload_dic['dic'][infor]['size']
 				upload_dic['uploaded'] += 1
+				upload_dic['uploading'] -= 1
 			else:
 				upload_dic['dic'][infor]['rt'] = 'uploadedfailed'
 				upload_dic['dic'][infor]['process'] = upload_dic['dic'][infor]['size']
@@ -1650,82 +1674,150 @@ func _from_tcp_transf_class(_who_i_am:String, taskid:String, req_type:String, in
 			upload_dic['uploading'] -= 1
 			if upload_dic['notuploadyet'] + upload_dic['uploading'] == 0:
 				show_upload_process()
-				_on_class_report_result('connect_home', '', 'upload_files', '', 'FINISH')
-				
-	elif current_state == 'query_files':# query finish                                          ## 3.1
-		if req_type == 'query' and taskid == query_obj.taskid:
-			query_rt = result
-			update_state()
-			excute_state()
-	elif current_state == 'push_files_table':# push finish                                      ## !2.3  !3.3
-		if req_type == 'upload' and taskid == push_obj.taskid:
-			clear_list.append(push_obj)
-			if upload_or_delete == 'upload':
-				show_main_log("[%s]上传完成"%[current_state])
 				show_sub_log()
-			elif upload_or_delete == 'delete':
-				show_main_log("[%s]清理完成"%[current_state])
-				update_and_show_files()
+				upload__start_query_files_dic(upload_dic)
+		else:
+			log_window.add_log("[connect_home]->upload__receive_upload_finish:other message")
+		show_sub_log()
+	else:
+		log_window.add_log("[connect_home]->upload__receive_upload_finish:unknown message:%s, %s"%[req_type, result])
 
-	if result == 'START' and req_type in e2z_dic:
-		pass
-		show_main_log('[%s], 开始%s:%s'%[current_state, e2z_dic.get(req_type, ''), infor])
-	elif result == 'PROCESS':
-		var a:Array = infor.split(';')
-		var filepath:String = a[1]
-		if filepath in upload_dic['dic']:
-			upload_dic['dic'][filepath]['process'] = a[0].to_int()
-			upload_dic['dic'][filepath]['size'] = a[2].to_int()
-		show_upload_process()
-	#elif result == 'FAILED':
-	#	show_main_log('[%s], 失败'%[current_state])
-	#	log_window.add_log("[connect_home]->_on_class_report_result:failed!!!!!!!!!!!!")
-
-func _from_scan_class(_who_i_am:String, taskid:String, req_type:String, infor:String, result:String) -> void:
-	if current_state == 'scan_files':# scan finish
-		if taskid == scan_files_obj.taskid and result == 'FINISH':
-			clear_list.append(scan_files_obj)
-			show_main_log('[%s]扫描完成'%current_state)
-			var scan_rt:Dictionary = JSON.parse_string(infor)
-			logs_dic.scan_rt = '扫描:%s, 新增:%s, 修改:%s, 可删除:%s'%[scan_rt.all, scan_rt.add, scan_rt.mod, scan_rt.del]
-			show_sub_log()
-			update_state()
-			excute_state()
-	if result == 'START':
-		show_main_log('[%s], 开始%s:%s'%[current_state,e2z_dic.get(req_type, ''), infor])
-
-func _from_connect_home(_who_i_am:String, _taskid:String, req_type:String, infor:String, result:String) -> void:
-	if current_state == 'deal_files':# deal files finish                                        ## !1.3
-		if req_type == 'deal_files' and result == 'FINISH':
-			show_main_log('[%s], 扫描完成'%[current_state])
-			update_state()
-			update_and_show_files()
-	elif current_state == 'upload_files':# upload all files finish                              ## 2.2
-		if req_type == 'upload_files' and result == 'FINISH':
-			update_files_table_after_upload()
-			logs_dic.upload_rt = '应上传:%s个, 上传成功:%s个, 上传失败:%s个'%[
-				upload_dic['uploaded'] + upload_dic['uploadfailed'], 
-				upload_dic['uploaded'], upload_dic['uploadfailed']]
-			current_state = 'delete_files'## force to delete_files
-			update_state()
-			excute_state()
-	elif current_state == 'delete_files':# delete files finish                                  ## 3.2
-		if req_type == 'delete_files' and result == 'FINISH':
-			logs_dic.delete_rt = infor
-			update_state()
-			excute_state()
+func upload__start_query_files_dic(_filedic:Dictionary) -> void:
+	log_window.add_log("[connect_home]->upload__start_query_files_dic")
+	var taskid:String = generate_task_id()
+	var _query_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
+	_query_obj.connect("report_result", upload__end_query_files_dic.bind(taskid, _query_obj))
+	var filedic:Dictionary = {}
+	for eachf in delete_dic:
+		var file_md5:String = FileAccess.get_md5(eachf)
+		var filename:String = eachf.replace(UE_ROOT_DIR + '/', '')
+		filedic[filename] = file_md5
+	query_obj.query_files(filedic)
 	
-func _on_class_report_result(who_i_am:String, taskid:String, req_type:String, infor:String, result:String) -> void:
-	log_window.add_log("[connect_home]->_on_class_report_result:%s-%s %s %s %s"%[who_i_am, taskid, req_type, infor, result])
-	## 1 ### init -> pull_files_table -> scan_files -> deal_files -> update_and_show_files
-	## 2 ###         upload_files -> push_files_table -> update_and_show_files
-	## 3 ###         query_files -> delete_files -> push_files_table -> update_and_show_files
-	if who_i_am == 'tcp_transf_class':
-		_from_tcp_transf_class(who_i_am, taskid, req_type, infor, result)
-	elif who_i_am == 'scan_class':###                                                               ## 1.2
-		_from_scan_class(who_i_am, taskid, req_type, infor, result)
-	elif who_i_am == 'connect_home':
-		_from_connect_home(who_i_am, taskid, req_type, infor, result)
+func upload__end_query_files_dic(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
+	log_window.add_log("[connect_home]->scan__end_scan_files:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
+	if req_type == 'query' and taskid == _taskid:
+		if result == 'FINISH':
+			if infor != 'all ok':
+				var retry_dic:Dictionary = JSON.parse_string(infor)
+				for eachf in retry_dic:
+					if eachf in upload_dic.get('dic', {}):
+						upload_dic['dic'][eachf]['rt'] = 'notuploadyet'
+			upload__update_files_table_after_upload()
+	elif result == 'FAILED':
+		log_window.add_log("[connect_home]->upload__end_query_files_dic:failed!!!!!!!!!!!")
+	upload__update_files_table_after_upload()
+	clear_list.append(_obj)
+
+func upload__update_files_table_after_upload() -> void:
+	log_window.add_log("[connect_home]->upload__update_files_table_after_upload start")
+	var taskid:String = generate_task_id()
+	scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
+	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
+	var f_table:Dictionary = scan_files_obj.read_db().get('all_files_dic', {})
+	var d_table:Dictionary = scan_files_obj.read_db().get('rename_files_dic', {})
+	for eachfile in upload_dic['dic']:
+		if upload_dic['dic'][eachfile]['rt'] != 'uploaded':
+			continue
+		if eachfile in f_table:
+			f_table[eachfile]['on_server'] = 'yes'
+	scan_files_obj.write_db({'all_files_dic': f_table, 'rename_files_dic': d_table})
+	log_window.add_log("[connect_home]->update_files_table_after_upload_thread finish")
+	show_sub_log()
+	upload__start_push_files_table()
+	
+func upload__start_push_files_table() -> void:
+	log_window.add_log("[connect_home]->upload__start_push_files_table")
+	var taskid:String = generate_task_id()
+	var _push_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'yes')
+	_push_obj.connect("report_result", upload__end_push_files_table.bind(taskid, _push_obj))
+	var push_file = UE_ROOT_DIR.path_join('files.txt')
+	_push_obj.upload_a_file(push_file)
+	
+func upload__end_push_files_table(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
+	log_window.add_log("[connect_home]->scan__end_scan_files:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
+	if req_type == 'upload' and taskid == _taskid:
+		if result == 'FINISH':
+			show_main_log('上传完成!')
+		elif result == 'FAILED':
+			show_main_log('上传失败!')
+		else:
+			log_window.add_log("[connect_home]->upload__end_push_files_table: other result:%s"%result)
+		show_sub_log()
+		update_and_show_files()
+
+###################################### function control end #####################################
+func go_next_page() -> void:
+	go_next_pag_try_cnt += 1
+	if go_next_pag_try_cnt >= 2:
+		go_next_pag_try_cnt = 0
+		var next_sidx = dis_sidx + 1
+		if next_sidx < dis_sidx_list.size():
+			dis_sidx = next_sidx
+			update_ui()
+			scroll_container.scroll_vertical = 5
+		
+func go_previous_page() -> void:
+	go_next_pag_try_cnt += 1
+	if go_next_pag_try_cnt >= 2:
+		go_next_pag_try_cnt = 0
+		var next_sidx = dis_sidx - 1
+		if next_sidx >= 0:
+			dis_sidx = next_sidx
+			update_ui()
+			scroll_container.scroll_vertical = 5
+
+func _is_content_scrollable() -> bool:
+	var v_scroll = scroll_container.get_v_scroll_bar()
+	return v_scroll != null and v_scroll.visible
+
+func _is_at_top() -> bool:
+	return scroll_container.scroll_vertical <= 0
+
+func _is_at_bottom() -> bool:
+	if not _is_content_scrollable():
+		return false
+	var v_scroll = scroll_container.get_v_scroll_bar()
+	var max_scroll = v_scroll.max_value
+	var view_height = scroll_container.get_rect().size.y
+	return scroll_container.scroll_vertical >= (max_scroll - view_height - 1)  # 允许1像素误差
+
+func _on_scroll_value_changed(value: int):
+	print(value)
+	last_scroll = value
+
+func _on_long_press_timeout() -> void:
+	if not is_pressing:
+		return
+	if not is_long_pressing:
+		is_long_pressing = true
+		print('-----long press')
+
+func _start_pressed() -> void:
+	is_pressing = true
+	is_long_pressing = false
+	press_start_pos = get_global_mouse_position()
+	last_scroll = scroll_container.scroll_vertical
+	comtimer.wait_time = long_press_threshold
+	comtimer.start()
+		
+func _end_pressed() -> void:
+	var end_pos = get_global_mouse_position()
+	var drag_delta = end_pos - press_start_pos
+	var drag_distance = drag_delta.y
+	if abs(drag_distance) < drag_threshold:
+		return
+	var is_at_top = _is_at_top()
+	var can_scroll = _is_content_scrollable()
+	if not can_scroll:
+		if drag_distance < 0:
+			go_next_page()
+		else:
+			go_previous_page()
+	if drag_distance < 0 and _is_at_bottom():
+		go_next_page()
+	elif drag_distance > 0 and _is_at_top():
+		go_previous_page()
 		
 func _process(_del)	-> void:
 	for obj in clear_list:
@@ -1739,120 +1831,20 @@ func _process(_del)	-> void:
 		update_ui()
 		need_update_ui = false
 	
-	#if dis_height <= 0:
-		#var a:int = scroll_container.get_v_scroll_bar().max_value
-		#dis_height = a - 2000 if a > 2000 else a 
-		#print("update dis_height to:%s"%dis_height)
-	#
-	#if abs(scroll_container.scroll_vertical - dis_last_scroll_pos) < 3:
-		#dis_last_scroll_pos = scroll_container.scroll_vertical
-	#else:
-		#print("---%s, %s, %s"%[scroll_container.scroll_vertical, dis_last_scroll_pos, dis_height])
-		#if dis_height - scroll_container.scroll_vertical <= 0:
-			#go_next_pag_try_cnt += 1
-			#print("bottum now! %s, %s, %s"%[scroll_container.scroll_vertical, dis_height, go_next_pag_try_cnt])
-			#if go_next_pag_try_cnt >= 2:# and Time.get_ticks_msec() - go_next_page_delay > 1000 * 0.3:
-				#go_next_page_delay = Time.get_ticks_msec()
-				#go_next_pag_try_cnt = 0
-				#var next_sidx = dis_sidx + 1
-				#if next_sidx < dis_sidx_list.size():
-					#dis_sidx = next_sidx
-					#update_ui()
-					#scroll_container.scroll_vertical = 5
-			#else:
-				#scroll_container.scroll_vertical = dis_height - 5
-		#
-		#elif scroll_container.scroll_vertical <= 0:
-			#go_next_pag_try_cnt += 1
-			#print("top now! %s, %s, %s"%[scroll_container.scroll_vertical, dis_height, go_next_pag_try_cnt])
-			#if go_next_pag_try_cnt >= 2:# and Time.get_ticks_msec() - go_next_page_delay > 1000 * 0.3:
-				#go_next_page_delay = Time.get_ticks_msec()
-				#go_next_pag_try_cnt = 0
-				#var next_sidx = dis_sidx - 1
-				#if next_sidx >= 0:
-					#dis_sidx = next_sidx
-					#update_ui()
-					#scroll_container.scroll_vertical = 5
-			#else:
-				#scroll_container.scroll_vertical = 5
-		#dis_last_scroll_pos = scroll_container.scroll_vertical
-	
 func _input(event: InputEvent) -> void:
-	# 只处理鼠标左键或触摸（触摸会映射为鼠标事件）
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT\
 	or event is InputEventScreenTouch:
 		if event.pressed:
-			# 按下：开始拖拽
-			is_dragging = true
-			print('--->pressed')
-			drag_start_pos = get_global_mouse_position()
-			last_scroll = scroll_container.scroll_vertical
-			# 改变光标样式（可选）
-			Input.set_default_cursor_shape(Input.CURSOR_DRAG)
+			print('--->touch pressed, %s'%event)
+			_start_pressed()
 		else:
-			# 松开：结束拖拽，判断是否触发翻页
-			if is_dragging:
-				_end_drag()
-			is_dragging = false
-			Input.set_default_cursor_shape(Input.CURSOR_ARROW)
-	# 拖拽移动过程：不需要做额外处理，但可以记录偏移（用于实时反馈，可选）
-	elif is_dragging and event is InputEventMouseMotion:
-		# 可选：实时显示拖拽进度（如显示一个小箭头），这里留空
-		pass
-
-## 拖拽结束时调用，根据偏移量和滚动边界决定是否翻页
-func _end_drag():
-	var end_pos = get_global_mouse_position()
-	var drag_delta = end_pos - drag_start_pos
-	var drag_distance = drag_delta.y  # 正=向下拖，负=向上拖
-	
-	# 如果拖拽距离太小，忽略
-	if abs(drag_distance) < drag_threshold:
-		return
-	
-	# 获取当前滚动状态
-	var is_at_top = _is_at_top()
-	var is_at_bottom = _is_at_bottom()
-	var can_scroll = _is_content_scrollable()
-	
-	# 情况1：内容不可滚动 -> 任何方向拖拽都触发翻页
-	if not can_scroll:
-		if drag_distance < 0:  # 向上拖（想看下面的内容）-> 下一页
-			emit_signal("go_next_page")
-		else:                  # 向下拖 -> 上一页
-			emit_signal("go_previous_page")
-		return
-	
-	# 情况2：内容可滚动，只有在边界处并向边界外拖拽才触发翻页
-	# 向上拖拽（负值）且已到达底部 -> 下一页
-	if drag_distance < 0 and is_at_bottom:
-		emit_signal("go_next_page")
-	# 向下拖拽（正值）且已到达顶部 -> 上一页
-	elif drag_distance > 0 and is_at_top:
-		emit_signal("go_previous_page")
-	# 否则：正常滚动，不触发翻页
-	# 注意：不在这里 emit 任何信号
-
-## 判断内容总高度是否超过容器高度（即滚动条是否可见）
-func _is_content_scrollable() -> bool:
-	var v_scroll = scroll_container.get_v_scroll_bar()
-	return v_scroll != null and v_scroll.visible
-
-## 判断当前滚动位置是否到达顶部（允许微小误差）
-func _is_at_top() -> bool:
-	return scroll_container.scroll_vertical <= 0
-
-## 判断当前滚动位置是否到达底部（允许微小误差）
-func _is_at_bottom() -> bool:
-	if not _is_content_scrollable():
-		return false
-	var v_scroll = scroll_container.get_v_scroll_bar()
-	var max_scroll = v_scroll.max_value
-	var view_height = scroll_container.get_rect().size.y
-	# 当滚动条的最大值减去视口高度 ≤ 当前滚动值时，认为到达底部
-	return scroll_container.scroll_vertical >= (max_scroll - view_height - 1)  # 允许1像素误差
-
-## 滚动值变化时更新 last_scroll（用于边界判断的辅助）
-func _on_scroll_value_changed(value: int):
-	print(value)
-	last_scroll = value
+			if is_pressing:
+				_end_pressed()
+			is_pressing = false
+			print('----> touch unpressed, %s'%event)
+			var new_pos:Vector2 = event.position
+			var old_pos:Vector2 = texture_touch_dic.get('pos', Vector2.ZERO)
+			if !is_long_pressing and old_pos.distance_to(new_pos) < 1.0:
+				print('-----yes, i am click')
+				var filepath:String = texture_touch_dic.get('filepath', '')
+				open_a_file(filepath)

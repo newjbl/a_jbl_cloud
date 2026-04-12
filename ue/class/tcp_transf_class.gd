@@ -44,7 +44,7 @@ func _init(log_win, _taskid, rootdir, sip, sport, _usr, _psd, ercnt=3, ow='no') 
 
 ############################## connection ###################
 func connect_to_server(poolmax=10) -> void:
-	log_window.add_log("[tcp_transf_class]->connect_to_server.")
+	log_window.add_log("[tcp_transf_class]->connect_to_server:taskid=%s"%[taskid])
 	var socket_status = _socket.get_status()
 	if socket_status in [StreamPeerTCP.STATUS_CONNECTED, StreamPeerTCP.STATUS_CONNECTING]:
 		return
@@ -64,20 +64,47 @@ func connect_to_server(poolmax=10) -> void:
 			log_window.add_log('[tcp_transf_class]->connect_to_server:connect error:%s'%[error])
 	log_window.add_log("[tcp_transf_class]->connect_to_server:%s"%_socket.get_status())
 func query_files(filedic:Dictionary) -> void:
-	log_window.add_log('[tcp_transf_class]->query_files:%s'%[';'.join(filedic.keys())])
+	log_window.add_log('[tcp_transf_class]->query_files.')
 	connect_to_server()
 	var r = login_do()
 	if not r:
 		log_window.add_log('[tcp_transf_class]->query_files:login failed!')
 		disconnect_to_server()
 		return
-	var filestr:String = JSON.stringify(filedic)
-	request_a_message({
-		'req_type': 'query',
-		'status': '-',
-		'filedic': filestr,
-	})
+	upload_running = true
+	upload_thread = Thread.new()
+	upload_thread.start(query_files_thread.bind(filedic))
 
+func query_files_thread(filedic:Dictionary) -> void:
+	log_window.add_log('[tcp_transf_class]->query_files_thread.')
+	var filestr:String = JSON.stringify(filedic)
+	var loop_cnt = 0
+	while upload_running and loop_cnt <= 3:
+		loop_cnt += 1
+		request_a_message({
+			'req_type': 'query',
+			'status': '-',
+			'filedic': filestr,})
+		var r:Array = rec_a_datablock()
+		if r[0] == REQ_HEADER:
+			var rt_status = r[1].get('status', '')
+			if rt_status == 'OK':
+				var msg:String = r[1].get('message', '')
+				query_report_result(msg, 'FINISH')
+				return
+			else:
+				log_window.add_log('[tcp_transf_class]->query_files_thread:rt_status is %s, will try for %s time'%[rt_status, loop_cnt])
+		else:
+			log_window.add_log('[tcp_transf_class]->query_files_thread:failed, will try for %s time'%[loop_cnt])	
+	query_report_result('', 'FAILED')
+	log_window.add_log('[tcp_transf_class]->query_files_thread finish.')
+
+func query_report_result(msg:String, rt:String) -> void:
+	upload_running = false
+	disconnect_to_server()
+	log_window.add_log('[tcp_transf_class]->query_report_result. %s, %s'%[msg, rt])
+	emit_signal('report_result', 'tcp_transf_class', taskid, 'query', msg, rt)
+	
 func rec_a_datablock(timeout=3) -> Array:
 	#log_window.add_log('[tcp_transf_class]->rec_a_datablock')
 	if _socket == null:
@@ -175,7 +202,7 @@ func login_do(loopmax=3) -> bool:
 	return false
 		
 func disconnect_to_server() -> void:
-	log_window.add_log("[tcp_transf_class]->disconnect_to_server.")
+	log_window.add_log("[tcp_transf_class]->disconnect_to_server:taskid=%s"%[taskid])
 	if _socket == null:
 		log_window.add_log("[tcp_transf_class]->disconnect_to_server. _socket is null")
 		return
@@ -189,7 +216,7 @@ func disconnect_to_server() -> void:
 	
 #############################  upload ########################
 func upload_a_file(filepath:String) -> void:
-	log_window.add_log("[tcp_transf_class]->upload_a_file:%s"%[filepath])
+	log_window.add_log("[tcp_transf_class][%s]->upload_a_file:%s"%[taskid, filepath])
 	if not filepath.ends_with('/files.txt'):
 		emit_signal("report_result", 'tcp_transf_class', taskid, 'upload', filepath, 'START')
 	connect_to_server()
@@ -227,7 +254,7 @@ func upload_a_file_thread(filepath) -> void:
 						log_window.add_log('[tcp_transf_class]->upload_a_file_thread:%s upload failed:%s'%[filepath, rt_status])
 			elif rt_status == 'ERROR2':
 				log_window.add_log('[tcp_transf_class]->upload_a_file_thread:%s upload finish, already on server'%[filepath])
-				upload_report_result('FINISH')
+				upload_report_result('ERROR2')
 				return
 			else:
 				log_window.add_log('[tcp_transf_class]->upload_a_file_thread:%s upload failed:%s'%[filepath, rt_status])
@@ -270,7 +297,7 @@ func upload_report_result(rt:String) -> void:
 
 ######################### download #########################
 func download_a_file(filepath:String) -> void:
-	log_window.add_log("[tcp_transf_class]->download_a_file:%s"%[filepath])
+	log_window.add_log("[tcp_transf_class][%s]->download_a_file:%s"%[taskid, filepath])
 	if not filepath.ends_with('/files.txt'):
 		emit_signal("report_result", 'tcp_transf_class', taskid, 'download', filepath, 'START')
 	if FileAccess.file_exists(filepath) and overwrite == 'no':
@@ -479,7 +506,7 @@ func get_file_path(filepath) -> String:
 	return filepath
 	
 func _destory() -> void:
-	log_window.add_log("[tcp_transf_class]->_destory start")
+	log_window.add_log("[tcp_transf_class][%s]->_destory start"%taskid)
 	disconnect_to_server()
 	_socket = null
 	if download_thread:
@@ -491,5 +518,5 @@ func _destory() -> void:
 	if crc32_class:
 		crc32_class.free()
 	queue_free()	
-	log_window.add_log("[tcp_transf_class]->_destory finish")
+	log_window.add_log("[tcp_transf_class][%s]->_destory finish"%taskid)
 		

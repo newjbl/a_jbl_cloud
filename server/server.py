@@ -1,3 +1,4 @@
+#coding=utf-8
 import socket
 import threading
 import time
@@ -15,7 +16,7 @@ MAX_CONNECTIONS = 10
 
 UE_UPLOAD_PORT = 6666
 UE_UPLOAD_BLOCK_SIZE = 1024
-UE_TIMEOUT = 60
+UE_TIMEOUT = 5
 UE_DOWNLOAD_PORT = 7777
 ERROR_CODE_DIC = {
     "ERROR1":'FILE DIC ERROR',
@@ -85,20 +86,28 @@ def send_data_block(_socket, idx, data):
 
 def recv_all(sock, target_length, first=False) -> bytes:
     received_data = b''
-    # 剩余需要接收的字节数
     remaining = target_length
     try:
         while remaining > 0:
+            print('[%s]will try recv %s data'%(datetime.now(), remaining))
             chunk = sock.recv(remaining)
+            if not chunk:
+                print('[%s]peer disconnect, server will disconnect link'%(datetime.now()))
+                update_login_dic(sock)
+                sock.close()
+                return received_data
             received_data += chunk
             remaining -= len(chunk)
     except socket.timeout:
         if first:
-            return ''
-        import traceback
-        print(traceback.print_exc())
-        print(remaining)
-        return ''
+            print('[%s]time out for first, will disconnect link'%(datetime.now()))
+        else:
+            print('[%s]time out, will disconnect link' % (datetime.now()))
+            import traceback
+            print(traceback.print_exc())
+            print(remaining)
+        update_login_dic(sock)
+        sock.close()
     return received_data
 
 def handle_login(login_socket, client_addr, meta_json):
@@ -110,7 +119,7 @@ def handle_login(login_socket, client_addr, meta_json):
         send_stander_ack(login_socket, "|SV>GD|RQ:", 'login', "ERROR1", ERROR_CODE_DIC["ERROR1"], 0)
         return False
     send_stander_ack(login_socket, "|SV>GD|RQ:", 'login', "OK", "", 0)
-    LOGIN_DIC[client_addr] = {'usr': usr, 'socket': login_socket}
+    LOGIN_DIC[client_addr] = {'usr': usr, 'socket': login_socket, 'req_type':''}
     usr_dir = os.path.join(FILE_SAVE_DIR, usr)
     if not os.path.exists(usr_dir):
         os.mkdir(usr_dir)
@@ -118,7 +127,8 @@ def handle_login(login_socket, client_addr, meta_json):
     print('current LOGIN_DIC is :', LOGIN_DIC)
     return True
 
-def update_login_dic(_socket, client_addr):
+def update_login_dic(_socket):
+    client_addr = _socket.getpeername()
     if client_addr in LOGIN_DIC:
         del LOGIN_DIC[client_addr]
     print('current LOGIN_DIC is :', LOGIN_DIC)
@@ -150,7 +160,11 @@ def handle_ue_upload(upload_socket:socket.socket, client_addr:tuple):
                 handle_ue_upload_req(upload_socket, client_addr, upload_text)
             elif vidy >= 0:
                 r = handle_ue_upload_do(upload_socket, client_addr, upload_text)
-                if not r:
+                if r == 'disconnect':
+                    print('[%s]error happen, will disconnect link'%(datetime.now()))
+                    break
+                elif r == 'finish':
+                    print('[%s]finish, will disconnect link'%(datetime.now()))
                     break
             else:
                 print("[%s]ue(%s) receive unknow data:%s"%(datetime.now(), client_addr, data_head))
@@ -158,8 +172,9 @@ def handle_ue_upload(upload_socket:socket.socket, client_addr:tuple):
         import traceback
         print(traceback.format_exc())
     finally:
-        upload_socket.close()
-        update_login_dic(upload_socket, client_addr)
+        if '[closed]' not in str(upload_socket):
+            update_login_dic(upload_socket)
+            upload_socket.close()
         print("[%s]ue(%s) upload link disconnect"%(datetime.now(), client_addr))
 
 def handle_ue_upload_req(upload_socket:socket.socket, client_addr:tuple, upload_text):
@@ -193,6 +208,9 @@ def handle_query(upload_socket:socket.socket, client_addr:tuple, meta_json:dict)
         print("[%s]ue(%s) query data missing"%(datetime.now(), client_addr))
         send_stander_ack(upload_socket, "|SV>GD|RQ:", "upload", "ERROR1", ERROR_CODE_DIC["ERROR1"], 0)
         return False
+    if client_addr in LOGIN_DIC:
+        LOGIN_DIC[client_addr]['req_type'] = req_type
+        print('[%s]upadte LOGIN_DIC:'%[datetime.now()], LOGIN_DIC)
     rt = []
     file_dic = json.loads(filedic)
     for filepath, md5 in file_dic.items():
@@ -216,6 +234,9 @@ def handle_ue_upload_details(upload_socket:socket.socket, client_addr:tuple, met
         print("[%s]ue(%s) request upload parameters missing"%(datetime.now(), client_addr))
         send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "ERROR1", ERROR_CODE_DIC["ERROR1"], 0)
         return False
+    if client_addr in LOGIN_DIC:
+        LOGIN_DIC[client_addr]['req_type'] = req_type
+        print('[%s]upadte LOGIN_DIC:'%[datetime.now()], LOGIN_DIC)
     print("[%s]ue(%s) request upload parameters OK: filepath is %s, filesize is %s, md5 is %s"%(datetime.now(), client_addr, filepath, file_size, file_md5))
     new_timeout = get_socket_timeout(file_size)
     print("[%s]ue(%s) request upload new timeout: %s, %s"%(datetime.now(), client_addr, new_timeout, filepath))
@@ -274,22 +295,22 @@ def handle_ue_upload_do(upload_socket:socket.socket, client_addr:tuple, upload_t
         req_len = recv_all(upload_socket,4)
         if not req_len:
             print("[%s]ue(%s) upload close(no data3)"%(datetime.now(), client_addr))
-            return False
+            return 'disconnect'
         data = recv_all(upload_socket,int(req_len, 16))
         if not data:
             print("[%s]ue(%s) upload close(no data4)"%(datetime.now(), client_addr))
-            return False
+            return 'disconnect'
         #print('handle_ue_upload_do:%s,%s:%s'%(req_len, len(data), data))
         idx = data[:6]
         data_block = data[6:-8]
         crc = int(data[-8:], 16)
         if not upload_text['is_uploading']:
             send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "ERROR6", ERROR_CODE_DIC["ERROR6"], 0)
-            return False
+            return 'disconnect'
         crc_check = caculate_crc32(data_block)
         if crc_check != crc:
             send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "ERROR7", ERROR_CODE_DIC["ERROR7"], 0)
-            return False
+            return 'disconnect'
         tmp_file_path = upload_text['tmp_file_path']
         sv_offset = upload_text['offset']
         file_size = upload_text['file_size']
@@ -306,16 +327,16 @@ def handle_ue_upload_do(upload_socket:socket.socket, client_addr:tuple, upload_t
             md5_check = caculate_md5(tmp_file_path)
             if md5_check != md5:
                 send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "ERROR4", ERROR_CODE_DIC["ERROR4"], 0)
-                return False
+                return 'disconnect'
             fin_file_name = upload_text["fin_file_path"]
             os.rename(tmp_file_path, fin_file_name)
             send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "FINISH", "FINISH", 0)
             upload_text['is_uploading'] = False
             print("[%s]ue(%s) upload finish"%(datetime.now(), client_addr))
+            update_login_dic(upload_socket)
             upload_socket.close()
-            update_login_dic(upload_socket, client_addr)
             print("[%s]ue(%s) upload link disconnect"%(datetime.now(), client_addr))
-            return True
+            return 'finish'
         #else:
         #    global download_process_dic
         #    filepath = upload_text['fin_file_path']
@@ -324,7 +345,7 @@ def handle_ue_upload_do(upload_socket:socket.socket, client_addr:tuple, upload_t
         #    if new_download_process != download_process:
         #        send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "PROCESS", "%s;%s" % (upload_text['gd_filepath'], file_size), new_offset)
         #        download_process_dic[filepath] = new_download_process
-        return True
+        return 'continue'
     except Exception as e:
         import traceback
         print(traceback.format_exc())
@@ -352,8 +373,9 @@ def handle_ue_download(download_socket: socket.socket, client_addr: tuple):
         import traceback
         print(traceback.format_exc())
     finally:
-        download_socket.close()
-        update_login_dic(download_socket, client_addr)
+        if '[closed]' not in str(download_socket):
+            update_login_dic(download_socket)
+            download_socket.close()
         print("[%s]ue(%s) download link disconnect"%(datetime.now(), client_addr))
 
 def handle_ue_download_req(download_socket:socket.socket, client_addr:tuple, download_text):
@@ -390,6 +412,9 @@ def handle_ue_download_details(download_socket:socket.socket, client_addr:tuple,
         send_stander_ack(download_socket, "|SV>GD|RQ:", 'download', "ERROR1", ERROR_CODE_DIC["ERROR1"], 0)
         return False
     print("[%s]ue(%s) request download parameters OK:%s"%(datetime.now(), client_addr, filepath))
+    if client_addr in LOGIN_DIC:
+        LOGIN_DIC[client_addr]['req_type'] = req_type
+        print('[%s]update LOGIN_DIC:'%(datetime.now()), LOGIN_DIC)
     usr_dir = LOGIN_DIC.get(client_addr, {}).get("usr_dir", "")
     if not usr_dir:
         print("[%s]ue(%s) request download usr dir missing"%(datetime.now(), client_addr))
