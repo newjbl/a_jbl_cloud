@@ -108,6 +108,10 @@ def recv_all(sock, target_length, first=False) -> bytes:
             print(remaining)
         update_login_dic(sock)
         sock.close()
+    except Exception as e:
+        import traceback
+        print(traceback.print_exc())
+        print(remaining)
     return received_data
 
 def handle_login(login_socket, client_addr, meta_json):
@@ -350,7 +354,7 @@ def handle_ue_upload_do(upload_socket:socket.socket, client_addr:tuple, upload_t
         import traceback
         print(traceback.format_exc())
         send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "ERRORO", ERROR_CODE_DIC["ERRORO"], 0)
-        return False
+        return 'disconnect'
 
 ############################ ue download ###############################
 def handle_ue_download(download_socket: socket.socket, client_addr: tuple):

@@ -1016,7 +1016,7 @@ func get_dis_sidx_list() -> void:
 	var dis_cnt:int = 0
 	var idx:int = 0
 	var sidx:int = 0
-	while idx <=len(timek_list):
+	while idx < len(timek_list):
 		var timek:String = timek_list[timek_list.size() - idx -1]
 		for eachf in display_file_dic[timek]:
 			if search_key == '' or search_key.to_upper() in eachf.filename.to_upper():
@@ -1029,7 +1029,7 @@ func get_dis_sidx_list() -> void:
 		idx += 1
 	if dis_cnt < 24:
 		dis_sidx_list.append(sidx)
-	print('[connect_home]get_dis_sidx_list:dis_sidx_list is:', dis_sidx_list)
+	print('[connect_home]->get_dis_sidx_list:dis_sidx_list is:', dis_sidx_list)
 	
 func update_ui() -> void:
 	log_window.add_log('[connect_home]->update_ui:%s, %s'%[dis_sidx, dis_sidx_list[dis_sidx]])
@@ -1319,7 +1319,7 @@ func _on_search_bt_pressed(input_line:LineEdit) -> void:
 
 func _on_are2d_input(vp:Node, evt:InputEvent, si:int, filepath:String, _texture_rec:TextureRect) -> void:
 	if evt is InputEventScreenTouch and evt.is_pressed():
-		print("_on_are2d_input:%s, %s, %s, %s, %s"%[vp, evt, si, filepath, evt.positon])
+		print("_on_are2d_input:%s, %s, %s, %s, %s"%[vp, evt, si, filepath, evt.position])
 		texture_touch_dic = {'filepath': filepath, 'pos': evt.position}
 
 func open_a_file(filepath:String) -> void:
@@ -1502,11 +1502,11 @@ func if_need_delete_ue_file(file_dic:Dictionary, day:int=7) -> bool:
 
 func show_sub_log() -> void:
 	if 'add' in scan_file_rt:
-		logs_show_scan.call_deferred("set_text", "%s"%['扫描:%s', '新增:%s', '修改:%s', '可删除:%s'%[
+		logs_show_scan.call_deferred("set_text", "%s"%['扫描:%s, 新增:%s, 修改:%s, 可删除:%s'%[
 			scan_file_rt.all, scan_file_rt.add, scan_file_rt.mod, scan_file_rt.del]])
 	if upload_dic.get('notuploadyet', 0) + upload_dic.get('uploading', 0) + \
 		upload_dic.get('uploaded', 0) + upload_dic.get('uploadfailed', 0) > 0:
-		logs_show_upload.call_deferred("set_text", "%s"%['应上传:%s, 应上传:%s, 应上传:%s, 应上传:%s'%[
+		logs_show_upload.call_deferred("set_text", "%s"%['应上传:%s, 上传中:%s, 上传成功:%s, 上传失败:%s'%[
 			upload_dic.notuploadyet, upload_dic.uploading, upload_dic.uploaded, upload_dic.uploadfailed]])
 	#logs_show_delete.call_deferred("set_text", "%s"%[logs_dic.delete_rt])
 
@@ -1528,7 +1528,7 @@ func show_upload_process() -> void:
 ############################################ function control begin #################################
 ## 1 ### init -> pull_files_table -> scan_files -> deal_files -> update_and_show_files
 func scan__start_scan() -> void:
-	current_doing = '【扫描】'
+	current_doing = '【扫描】:'
 	log_window.add_log('[connect_home]->scan__start_scan')
 	show_main_log('开始扫描!')
 	scan_file_rt = {}
@@ -1542,7 +1542,7 @@ func scan__start_pull_files_table() -> void:
 	var _pull_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'yes')
 	_pull_obj.connect("report_result", scan__end_pull_files_table.bind(taskid, _pull_obj))
 	var pull_file = UE_ROOT_DIR.path_join('files.txt')
-	pull_obj.download_a_file(pull_file)
+	_pull_obj.download_a_file(pull_file)
 	
 func scan__end_pull_files_table(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
 	log_window.add_log("[connect_home]->scan__end_pull_files_table:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
@@ -1553,7 +1553,7 @@ func scan__end_pull_files_table(who_i_am:String, taskid:String, req_type:String,
 	
 func scan__start_scan_files() -> void:
 	log_window.add_log('[connect_home]->scan__start_scan_files')
-	show_main_log('开始扫描件...')
+	show_main_log('开始扫描文件...')
 	var taskid:String = generate_task_id()
 	var _scan_files_obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
 	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
@@ -1601,7 +1601,7 @@ func scan__end_scan() -> void:
 	
 ## 2 ###         upload_files -> push_files_table -> update_and_show_files
 func upload__start_upload() -> void:
-	current_doing = '【上传】'
+	current_doing = '【上传】:'
 	log_window.add_log('[connect_home]->upload__start_upload')
 	show_main_log('开始上传!')
 	show_sub_log()
@@ -1640,7 +1640,7 @@ func upload__upload_a_file(filepath:String) -> bool:
 	return true
 	
 func upload__receive_upload_finish(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
-	log_window.add_log("[connect_home]->scan__end_scan_files:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
+	log_window.add_log("[connect_home]->upload__receive_upload_finish:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
 	if req_type == 'upload' and taskid == _taskid:
 		if result == 'START' and req_type in e2z_dic:
 			pass
@@ -1662,20 +1662,16 @@ func upload__receive_upload_finish(who_i_am:String, taskid:String, req_type:Stri
 				show_main_log('上传完成:%s'%[infor])
 			else:
 				show_main_log('已经存在不需要上传:%s'%[infor])
-			if result == 'FINISH':
-				upload_dic['dic'][infor]['rt'] = 'uploaded'
-				upload_dic['dic'][infor]['process'] = upload_dic['dic'][infor]['size']
-				upload_dic['uploaded'] += 1
-				upload_dic['uploading'] -= 1
-			else:
-				upload_dic['dic'][infor]['rt'] = 'uploadedfailed'
-				upload_dic['dic'][infor]['process'] = upload_dic['dic'][infor]['size']
-				upload_dic['uploadedfailed'] += 1
+			
+			upload_dic['dic'][infor]['rt'] = 'uploaded'
+			upload_dic['dic'][infor]['process'] = upload_dic['dic'][infor]['size']
+			upload_dic['uploaded'] += 1
 			upload_dic['uploading'] -= 1
 			if upload_dic['notuploadyet'] + upload_dic['uploading'] == 0:
 				show_upload_process()
 				show_sub_log()
 				upload__start_query_files_dic(upload_dic)
+			clear_list.append(_obj)
 		else:
 			log_window.add_log("[connect_home]->upload__receive_upload_finish:other message")
 		show_sub_log()
@@ -1687,15 +1683,16 @@ func upload__start_query_files_dic(_filedic:Dictionary) -> void:
 	var taskid:String = generate_task_id()
 	var _query_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
 	_query_obj.connect("report_result", upload__end_query_files_dic.bind(taskid, _query_obj))
-	var filedic:Dictionary = {}
-	for eachf in delete_dic:
+	var querydic:Dictionary = {}
+	var _querydic:Dictionary = _filedic.get('dic', {})
+	for eachf in _querydic:
 		var file_md5:String = FileAccess.get_md5(eachf)
 		var filename:String = eachf.replace(UE_ROOT_DIR + '/', '')
-		filedic[filename] = file_md5
-	query_obj.query_files(filedic)
+		querydic[filename] = file_md5
+	query_obj.query_files(querydic)
 	
 func upload__end_query_files_dic(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
-	log_window.add_log("[connect_home]->scan__end_scan_files:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
+	log_window.add_log("[connect_home]->upload__end_query_files_dic:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
 	if req_type == 'query' and taskid == _taskid:
 		if result == 'FINISH':
 			if infor != 'all ok':
@@ -1791,7 +1788,7 @@ func _on_long_press_timeout() -> void:
 		return
 	if not is_long_pressing:
 		is_long_pressing = true
-		print('-----long press')
+		print('-----long pressed')
 
 func _start_pressed() -> void:
 	is_pressing = true
@@ -1807,13 +1804,13 @@ func _end_pressed() -> void:
 	var drag_distance = drag_delta.y
 	if abs(drag_distance) < drag_threshold:
 		return
-	var is_at_top = _is_at_top()
 	var can_scroll = _is_content_scrollable()
 	if not can_scroll:
 		if drag_distance < 0:
 			go_next_page()
 		else:
 			go_previous_page()
+		return
 	if drag_distance < 0 and _is_at_bottom():
 		go_next_page()
 	elif drag_distance > 0 and _is_at_top():
@@ -1832,8 +1829,8 @@ func _process(_del)	-> void:
 		need_update_ui = false
 	
 func _input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT\
-	or event is InputEventScreenTouch:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+	#or event is InputEventScreenTouch:
 		if event.pressed:
 			print('--->touch pressed, %s'%event)
 			_start_pressed()
