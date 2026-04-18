@@ -1007,7 +1007,7 @@ func update_and_show_files_thread() -> void:
 	#call_deferred('update_ui', file_dic)
 	need_update_ui = true
 	_obj._destory()
-	#log_window.add_log('[connect_home]->update_and_show_files_thread:thread_finish:%s'%[JSON.stringify(display_file_dic)])
+	#log_window.add_log('[connect_home]->update_and_show_files_thread:thread_finish:%s'%[display_file_dic.size()])
 
 func get_dis_sidx_list() -> void:
 	dis_sidx_list = []
@@ -1420,7 +1420,7 @@ func update_files_table_after_delete_thread() -> void:
 	var taskid:String = generate_task_id()
 	var _obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
 	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
-	task_dic[task_dic] = _obj
+	task_dic[taskid] = _obj
 	var f_table:Dictionary = _obj.read_db().get('all_files_dic', {})
 	var d_table:Dictionary = _obj.read_db().get('rename_files_dic', {})
 	for eachfile in delete_dic:
@@ -1547,7 +1547,7 @@ func scan__start_pull_files_table() -> void:
 	show_main_log('拉取文件列表')
 	var taskid:String = generate_task_id()
 	var _obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'yes')
-	task_dic[task_dic] = _obj
+	task_dic[taskid] = _obj
 	_obj.connect("report_result", scan__end_pull_files_table.bind(taskid, _obj))
 	var pull_file = UE_ROOT_DIR.path_join('files.txt')
 	_obj.download_a_file(pull_file)
@@ -1601,7 +1601,7 @@ func scan__start_deal_files() -> void:
 	var taskid:String = generate_task_id()
 	var _obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
 	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
-	task_dic[task_dic] = _obj
+	task_dic[taskid] = _obj
 	var files_dic:Dictionary = _obj.read_db()
 	var all_files_dic:Dictionary = files_dic.get("all_files_dic", {})
 	_obj._destory()
@@ -1663,18 +1663,18 @@ func upload__start_upload_thread() -> void:
 func upload__upload_a_file(filepath:String) -> bool:
 	var taskid:String = generate_task_id()
 	var _obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
-	task_dic[task_dic] = _obj
+	task_dic[taskid] = _obj
 	_obj.connect("report_result", upload__receive_upload_finish.bind(taskid, _obj))
 	_obj.upload_a_file(filepath)
 	return true
 	
 func upload__receive_upload_finish(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
 	log_window.add_log("[connect_home]->upload__receive_upload_finish:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
-	if req_type == 'upload' and taskid == _taskid:
-		if result == 'START' and req_type in e2z_dic:
-			pass
-			show_main_log('开始%s:%s'%[e2z_dic.get(req_type, ''), infor])
-		elif result == 'PROCESS':
+	if who_i_am == 'tcp_transf_class' and req_type == 'upload' and taskid == _taskid:
+		#if result == 'START' and req_type in e2z_dic:
+		#	pass
+		#	show_main_log('开始%s:%s'%[e2z_dic.get(req_type, ''), infor])
+		if result == 'PROCESS':
 			var a:Array = infor.split(';')
 			var filepath:String = a[1]
 			if filepath in upload_dic['dic']:
@@ -1682,6 +1682,7 @@ func upload__receive_upload_finish(who_i_am:String, taskid:String, req_type:Stri
 				upload_dic['dic'][filepath]['size'] = a[2].to_int()
 			show_upload_process()	
 		elif result == 'FAILED':
+			clear_list.append(_obj)
 			show_main_log('失败!')
 			log_window.add_log("[connect_home]->upload__receive_upload_finish:failed!!!!!!!")
 		elif result in ['FINISH', 'ERROR2']:
@@ -1691,16 +1692,13 @@ func upload__receive_upload_finish(who_i_am:String, taskid:String, req_type:Stri
 				show_main_log('上传完成:%s'%[infor])
 			else:
 				show_main_log('已经存在不需要上传:%s'%[infor])
-			
 			upload_dic['dic'][infor]['rt'] = 'uploaded'
 			upload_dic['dic'][infor]['process'] = upload_dic['dic'][infor]['size']
 			upload_dic['uploaded'] += 1
 			upload_dic['uploading'] -= 1
 			if upload_dic['notuploadyet'] + upload_dic['uploading'] == 0:
 				show_upload_process()
-				show_sub_log()
 				upload__start_query_files_dic(upload_dic)
-			clear_list.append(_obj)
 		else:
 			log_window.add_log("[connect_home]->upload__receive_upload_finish:other message")
 		show_sub_log()
@@ -1711,7 +1709,7 @@ func upload__start_query_files_dic(_filedic:Dictionary) -> void:
 	log_window.add_log("[connect_home]->upload__start_query_files_dic")
 	var taskid:String = generate_task_id()
 	var _obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
-	task_dic[task_dic] = _obj
+	task_dic[taskid] = _obj
 	_obj.connect("report_result", upload__end_query_files_dic.bind(taskid, _obj))
 	var querydic:Dictionary = {}
 	var _querydic:Dictionary = _filedic.get('dic', {})
@@ -1746,7 +1744,7 @@ func upload__update_files_table_after_upload() -> void:
 	var taskid:String = generate_task_id()
 	var _obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
 	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
-	task_dic[task_dic] = _obj
+	task_dic[taskid] = _obj
 	var f_table:Dictionary = _obj.read_db().get('all_files_dic', {})
 	var d_table:Dictionary = _obj.read_db().get('rename_files_dic', {})
 	for eachfile in upload_dic['dic']:
@@ -1770,7 +1768,7 @@ func upload__start_push_files_table() -> void:
 	_obj.upload_a_file(push_file)
 	
 func upload__end_push_files_table(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
-	log_window.add_log("[connect_home]->scan__end_scan_files:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
+	log_window.add_log("[connect_home]->upload__end_push_files_table:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
 	if who_i_am == 'tcp_transf_class' and req_type == 'upload' and taskid == _taskid:
 		if result == 'FINISH':
 			clear_list.append(_obj)
@@ -1866,7 +1864,7 @@ func _process(_del)	-> void:
 			obj = null
 	for idx in range(len(thread_list)):
 		var eachthread:Thread = thread_list[idx]
-		if eachthread and eachthread.is_alive():
+		if eachthread and not eachthread.is_alive():
 			eachthread.wait_to_finish()
 			eachthread = null
 			thread_list[idx] = null	
