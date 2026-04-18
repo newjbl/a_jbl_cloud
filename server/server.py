@@ -89,7 +89,7 @@ def recv_all(sock, target_length, first=False) -> bytes:
     remaining = target_length
     try:
         while remaining > 0:
-            print('[%s]will try recv %s data'%(datetime.now(), remaining))
+            #print('[%s]will try recv %s data'%(datetime.now(), remaining))
             chunk = sock.recv(remaining)
             if not chunk:
                 print('[%s]peer disconnect, server will disconnect link'%(datetime.now()))
@@ -336,7 +336,7 @@ def handle_ue_upload_do(upload_socket:socket.socket, client_addr:tuple, upload_t
             os.rename(tmp_file_path, fin_file_name)
             send_stander_ack(upload_socket, "|SV>GD|RQ:", 'upload', "FINISH", "FINISH", 0)
             upload_text['is_uploading'] = False
-            print("[%s]ue(%s) upload finish"%(datetime.now(), client_addr))
+            print("[%s]ue(%s) upload finish:%s"%(datetime.now(), client_addr, fin_file_name))
             update_login_dic(upload_socket)
             upload_socket.close()
             print("[%s]ue(%s) upload link disconnect"%(datetime.now(), client_addr))

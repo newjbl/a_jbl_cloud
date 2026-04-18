@@ -70,7 +70,7 @@ var current_doing:String = ''
 #var upload_thread:Thread = null
 #var update_files_aupload_thread:Thread = null
 #var update_files_adelete_thread:Thread = null
-var clear_list:Array = []
+var clear_dic:Dictionary = {}
 var search_key:String = ''
 var display_file_dic:Dictionary = {}
 var need_clear_ui:bool = false
@@ -1139,7 +1139,7 @@ poolmax=10, loopmax=3):
 	var _PSD:String = psd_input.text
 	var taskid:String = generate_task_id()
 	var _obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, _SERVER_IP, _UPLOAD_PORT, _USR, _PSD, 3, 'no')
-	task_dic[taskid] = _obj
+	#task_dic[taskid] = _obj
 	_obj.connect_to_server(poolmax)
 	r = _obj.login_do(loopmax)
 	if r:
@@ -1556,11 +1556,11 @@ func scan__end_pull_files_table(who_i_am:String, taskid:String, req_type:String,
 	log_window.add_log("[connect_home]->scan__end_pull_files_table:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
 	if who_i_am == 'tcp_transf_class' and taskid == _taskid and req_type == 'download':
 		if result in ['FINISH', 'ERROR7']:
-			clear_list.append(_obj)
+			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			show_main_log('拉取完成')
 			scan__start_scan_files()
 		elif result == 'FAILED':
-			clear_list.append(_obj)
+			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			show_main_log('拉取失败，扫描停止!!!!!')
 		else:
 			log_window.add_log('[connect_home]->scan__end_pull_files_table, error result:%s, %s'%[req_type, result])
@@ -1583,11 +1583,11 @@ func scan__end_scan_files(who_i_am:String, taskid:String, req_type:String, infor
 	if who_i_am == 'scan_class' and taskid == _taskid and req_type == 'scan':
 		if result == 'FINISH':
 			scan_file_rt = JSON.parse_string(infor)
-			clear_list.append(_obj)
+			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			show_main_log('扫描文件完成!')
 			scan__start_deal_files()
 		elif result == 'FAILED':
-			clear_list.append(_obj)
+			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			show_main_log('扫描文件失败, 扫描终止!!!!!')
 		else:
 			log_window.add_log('[connect_home]->scan__end_scan_files, error result:%s, %s'%[req_type, result])
@@ -1645,7 +1645,7 @@ func upload__start_upload_thread() -> void:
 		var need_upload_cnt:int = max(0, 5 - upload_dic['uploading'])
 		if need_upload_cnt <= 0:
 			continue
-		log_window.add_log("[connect_home]->upload_files_thread:current upload_dic:%s"%[JSON.stringify(upload_dic['dic'])])
+		#log_window.add_log("[connect_home]->upload_files_thread:current upload_dic:%s"%[JSON.stringify(upload_dic['dic'])])
 		for filepath in upload_dic['dic']:
 			if upload_dic['dic'][filepath]['rt'] != 'notuploadyet':
 				continue
@@ -1669,7 +1669,7 @@ func upload__upload_a_file(filepath:String) -> bool:
 	return true
 	
 func upload__receive_upload_finish(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
-	log_window.add_log("[connect_home]->upload__receive_upload_finish:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
+	#log_window.add_log("[connect_home]->upload__receive_upload_finish:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
 	if who_i_am == 'tcp_transf_class' and req_type == 'upload' and taskid == _taskid:
 		#if result == 'START' and req_type in e2z_dic:
 		#	pass
@@ -1682,11 +1682,18 @@ func upload__receive_upload_finish(who_i_am:String, taskid:String, req_type:Stri
 				upload_dic['dic'][filepath]['size'] = a[2].to_int()
 			show_upload_process()	
 		elif result == 'FAILED':
-			clear_list.append(_obj)
+			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			show_main_log('失败!')
 			log_window.add_log("[connect_home]->upload__receive_upload_finish:failed!!!!!!!")
+			upload_dic['dic'][infor]['rt'] = 'uploadfailed'
+			upload_dic['dic'][infor]['process'] = upload_dic['dic'][infor]['size']
+			upload_dic['uploadfailed'] += 1
+			upload_dic['uploading'] -= 1
+			if upload_dic['notuploadyet'] + upload_dic['uploading'] == 0:
+				show_upload_process()
+				upload__start_query_files_dic(upload_dic)
 		elif result in ['FINISH', 'ERROR2']:
-			clear_list.append(_obj)
+			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			log_window.add_log("[connect_home]->upload__receive_upload_finish:upload file:%s, result:%s"%[infor, result])
 			if result == 'FINISH':
 				show_main_log('上传完成:%s'%[infor])
@@ -1715,7 +1722,11 @@ func upload__start_query_files_dic(_filedic:Dictionary) -> void:
 	var _querydic:Dictionary = _filedic.get('dic', {})
 	for eachf in _querydic:
 		var file_md5:String = FileAccess.get_md5(eachf)
-		var filename:String = eachf.replace(UE_ROOT_DIR + '/', '')
+		var filename:String = eachf
+		if UE_ROOT_DIR + '/' in eachf:
+			filename = eachf.replace(UE_ROOT_DIR + '/', '')
+		elif UE_ROOT_DIR in eachf:
+			filename = eachf.replace(UE_ROOT_DIR, '')
 		querydic[filename] = file_md5
 	_obj.query_files(querydic)
 	
@@ -1723,7 +1734,7 @@ func upload__end_query_files_dic(who_i_am:String, taskid:String, req_type:String
 	log_window.add_log("[connect_home]->upload__end_query_files_dic:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
 	if who_i_am == 'tcp_transf_class' and req_type == 'query' and taskid == _taskid:
 		if result == 'FINISH':
-			clear_list.append(_obj)
+			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			if infor != 'all ok':
 				var retry_dic:Dictionary = JSON.parse_string(infor)
 				for eachf in retry_dic:
@@ -1731,7 +1742,7 @@ func upload__end_query_files_dic(who_i_am:String, taskid:String, req_type:String
 						upload_dic['dic'][eachf]['rt'] = 'notuploadyet'
 			upload__update_files_table_after_upload()
 		elif result == 'FAILED':
-			clear_list.append(_obj)
+			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			log_window.add_log("[connect_home]->upload__end_query_files_dic:failed!!!!!!!!!!!")
 		else:
 			log_window.add_log("[connect_home]->upload__end_query_files_dic:error result:%s, %s"%[req_type, result])
@@ -1771,11 +1782,11 @@ func upload__end_push_files_table(who_i_am:String, taskid:String, req_type:Strin
 	log_window.add_log("[connect_home]->upload__end_push_files_table:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
 	if who_i_am == 'tcp_transf_class' and req_type == 'upload' and taskid == _taskid:
 		if result == 'FINISH':
-			clear_list.append(_obj)
+			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			show_main_log('上传完成!')
 			update_and_show_files()
 		elif result == 'FAILED':
-			clear_list.append(_obj)
+			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			show_main_log('上传失败!')
 			update_and_show_files()
 		else:
@@ -1858,10 +1869,13 @@ func _end_pressed() -> void:
 		go_previous_page()
 		
 func _process(_del)	-> void:
-	for obj in clear_list:
-		if obj != null:
-			obj._destory()
-			obj = null
+	for taskid in clear_dic:
+		if Time.get_ticks_msec() - clear_dic[taskid]['time'] > 1000 * 1:
+			if clear_dic[taskid]['obj'] != null:
+				clear_dic[taskid]['obj']._destory()
+				clear_dic[taskid]['obj'] = null
+				clear_dic.erase(taskid)
+
 	for idx in range(len(thread_list)):
 		var eachthread:Thread = thread_list[idx]
 		if eachthread and not eachthread.is_alive():

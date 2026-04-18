@@ -42,14 +42,14 @@ func scan_a_dir(scan_root_dir:String) -> void:
 	scan_thread.start(scan_a_dir_thread.bind(scan_root_dir))
 
 func scan_a_dir_thread(scan_root_dir:String) -> void:
-	log_window.add_log('[scan_class]->scan_a_dir_thread:will scan:%s' %[scan_root_dir])
+	#log_window.add_log('[scan_class]->scan_a_dir_thread:will scan:%s' %[scan_root_dir])
 	get_all_files(scan_root_dir)
 	scan_thread_running = false
 	merger_table()
 	emit_signal("scan_finished", 'scan_class', taskid, 'scan', JSON.stringify(scan_rt), 'FINISH')
 	
 func merger_table() -> void:
-	log_window.add_log('[scan_class]->merger_table')
+	#log_window.add_log('[scan_class]->merger_table')
 	var db_dic:Dictionary = read_db()
 	var server_files_dic:Dictionary = db_dic.get('all_files_dic', {})
 	var rename_files_dic:Dictionary = {}
@@ -90,7 +90,7 @@ func merger_table() -> void:
 		if ft not in iconer_file_dic:
 			iconer_file_dic[ft] = []
 		iconer_file_dic[ft].append(eachfile)
-	#iconer_c.create_icon(iconer_file_dic, ProjectSettings.globalize_path(icon_dir), 256)
+	iconer_c.create_icon(iconer_file_dic, ProjectSettings.globalize_path(icon_dir), 256)
 	write_db({"all_files_dic": server_files_dic, "rename_files_dic": rename_files_dic})
 	
 func get_all_files(scaned_path:String) -> void:

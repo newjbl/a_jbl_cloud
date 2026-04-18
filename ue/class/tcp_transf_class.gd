@@ -7,6 +7,7 @@ var serverip:String = "0.0.0.0"
 var serverport:int = 0
 var error_retry_cnt:int = 3
 var _socket:StreamPeerTCP = StreamPeerTCP.new()
+var _socket_alive:bool = false
 
 var upload_thread:Thread = null
 var upload_running:bool = false
@@ -62,9 +63,11 @@ func connect_to_server(poolmax=10) -> void:
 					break
 		_:
 			log_window.add_log('[tcp_transf_class]->connect_to_server:connect error:%s'%[error])
-	log_window.add_log("[tcp_transf_class]->connect_to_server:%s"%_socket.get_status())
+	#log_window.add_log("[tcp_transf_class]->connect_to_server:%s"%_socket.get_status())
+	_socket_alive = true if _socket.get_status() == StreamPeerTCP.STATUS_CONNECTED else false
+	
 func query_files(filedic:Dictionary) -> void:
-	log_window.add_log('[tcp_transf_class]->query_files.')
+	#log_window.add_log('[tcp_transf_class]->query_files.')
 	connect_to_server()
 	var r = login_do()
 	if not r:
@@ -76,7 +79,7 @@ func query_files(filedic:Dictionary) -> void:
 	upload_thread.start(query_files_thread.bind(filedic))
 
 func query_files_thread(filedic:Dictionary) -> void:
-	log_window.add_log('[tcp_transf_class]->query_files_thread.')
+	#log_window.add_log('[tcp_transf_class]->query_files_thread.')
 	var filestr:String = JSON.stringify(filedic)
 	var loop_cnt = 0
 	while upload_running and loop_cnt <= 3:
@@ -111,12 +114,12 @@ func rec_a_datablock(timeout=3) -> Array:
 		log_window.add_log('[tcp_transf_class]->rec_a_datablock:_socket is null')
 		return ['', 'error-1']
 	var stime:int = Time.get_ticks_msec()
-	while _socket and _socket.get_available_bytes() < 10:
+	while _socket_alive and _socket.get_status() == StreamPeerTCP.STATUS_CONNECTED and _socket.get_available_bytes() < 10:
 		if Time.get_ticks_msec() - stime > timeout * 1000:
 			return ['', 'error0']
 	var header:String = ''
 	var data:Array = _socket.get_data(10) if _socket else []
-	if _socket and data and  data[0] == Error.OK and data[1].size() > 0:
+	if _socket_alive and data and  data[0] == Error.OK and data[1].size() > 0:
 		header = data[1].get_string_from_utf8()
 		if header == REQ_HEADER:
 			stime = Time.get_ticks_msec()
@@ -177,7 +180,7 @@ func rec_a_datablock(timeout=3) -> Array:
 		return ['', 'error1']
 
 func login_do(loopmax=3) -> bool:
-	log_window.add_log("[tcp_transf_class]->login_do.")
+	#log_window.add_log("[tcp_transf_class]->login_do.")
 	emit_signal("report_result", 'tcp_transf_class', taskid, 'login', '', 'START')
 	if _socket.get_status() != StreamPeerTCP.STATUS_CONNECTED:
 		log_window.add_log("[tcp_transf_class]->login_do failed due to _socket status is %s"%[_socket.get_status()])
@@ -209,6 +212,7 @@ func disconnect_to_server() -> void:
 	download_running = false
 	upload_running = false
 	dl_tmpfilepath = r''
+	_socket_alive = false
 	var socket_status = _socket.get_status()
 	if socket_status != StreamPeerTCP.STATUS_CONNECTED:
 		return
@@ -231,7 +235,7 @@ func upload_a_file(filepath:String) -> void:
 	upload_thread.start(upload_a_file_thread.bind(filepath))
 	
 func upload_a_file_thread(filepath) -> void:
-	log_window.add_log("[tcp_transf_class]->upload_a_file_thread:%s"%[filepath])
+	#log_window.add_log("[tcp_transf_class]->upload_a_file_thread:%s"%[filepath])
 	var loop_cnt:int = 0
 	while upload_running and loop_cnt <= 3:
 		log_window.add_log("[tcp_transf_class]->upload_a_file_thread:will send req_upload, cnt=%s, socket_status:%s"%[loop_cnt, _socket.get_status()])
@@ -239,30 +243,30 @@ func upload_a_file_thread(filepath) -> void:
 		request_upload(filepath)
 		var r1:Array = rec_a_datablock()
 		if r1[0] == REQ_HEADER:
-			var rt_status = r1[1].get('status', '')
-			if rt_status == 'OK':
+			var rt_status1 = r1[1].get('status', '')
+			if rt_status1 == 'OK':
 				upload_running = true
 				upload_data(filepath, r1[1].get('offset', 0))
 				var r2 = rec_a_datablock()
 				if r2[0] == REQ_HEADER:
-					rt_status = r2[1].get('status', '')
-					if rt_status == 'FINISH':
+					var rt_status2 = r2[1].get('status', '')
+					if rt_status2 == 'FINISH':
 						log_window.add_log('[tcp_transf_class]->upload_a_file_thread:%s upload finish, get response from server'%[filepath])
 						upload_report_result('FINISH')
 						return
 					else:
-						log_window.add_log('[tcp_transf_class]->upload_a_file_thread:%s upload failed:%s'%[filepath, rt_status])
-			elif rt_status == 'ERROR2':
+						log_window.add_log('[tcp_transf_class]->upload_a_file_thread:%s upload failed2:%s'%[filepath, rt_status2])
+			elif rt_status1 == 'ERROR2':
 				log_window.add_log('[tcp_transf_class]->upload_a_file_thread:%s upload finish, already on server'%[filepath])
 				upload_report_result('ERROR2')
 				return
 			else:
-				log_window.add_log('[tcp_transf_class]->upload_a_file_thread:%s upload failed:%s'%[filepath, rt_status])
+				log_window.add_log('[tcp_transf_class]->upload_a_file_thread:%s upload failed1:%s'%[filepath, rt_status1])
 	upload_report_result('FAILED')
 	return
 							
 func upload_data(filepath, offset) -> void:
-	log_window.add_log("[tcp_transf_class]->upload_data:%s  %s"%[filepath, offset])
+	#log_window.add_log("[tcp_transf_class]->upload_data:%s  %s"%[filepath, offset])
 	var uploadfile = FileAccess.open(filepath, FileAccess.READ)
 	if uploadfile == null:
 		return
@@ -314,7 +318,7 @@ func download_a_file(filepath:String) -> void:
 	download_thread.start(download_a_file_thread.bind(filepath))
 
 func download_a_file_thread(filepath) -> void:
-	log_window.add_log("[tcp_transf_class]->download_a_file_thread:%s"%[filepath])
+	#log_window.add_log("[tcp_transf_class]->download_a_file_thread:%s"%[filepath])
 	if overwrite == 'yes':
 		if not download_file_prepare_name_overwrite(filepath):
 			log_window.add_log('[tcp_transf_class]->download_a_file:remove file failed in download overwrite mode')
@@ -465,7 +469,7 @@ func write_a_data_block(f:FileAccess, data_block:PackedByteArray, preidx:int) ->
 	return {'s':data_payload.size(), 'd':-1, 'idx':idxint}
 				
 func request_download(filepath):
-	log_window.add_log("[tcp_transf_class]->request_download:%s"%[filepath])
+	#log_window.add_log("[tcp_transf_class]->request_download:%s"%[filepath])
 	var sv_filepath = get_file_path(filepath)
 	var data = {
 		'req_type': 'download',
@@ -474,7 +478,7 @@ func request_download(filepath):
 	request_a_message(data)
 	
 func request_upload(filepath) -> void:
-	log_window.add_log("[tcp_transf_class]->request_upload:%s"%[filepath])
+	#log_window.add_log("[tcp_transf_class]->request_upload:%s"%[filepath])
 	if not FileAccess.file_exists(filepath):
 		log_window.add_log('file not exist!!!')
 		return
@@ -489,7 +493,7 @@ func request_upload(filepath) -> void:
 	request_a_message(data)
 
 func request_a_message(req_dic:Dictionary):
-	log_window.add_log("[tcp_transf_class]->request_a_message:|GD>SV|RQ:%s is %s"%[_socket.get_status(), req_dic])
+	#log_window.add_log("[tcp_transf_class]->request_a_message:|GD>SV|RQ:%s is %s"%[_socket.get_status(), req_dic])
 	if _socket.get_status() == StreamPeerTCP.STATUS_CONNECTED:
 		var json_string:String = JSON.stringify(req_dic)
 		var json_string_utf8:PackedByteArray = json_string.to_utf8_buffer()
