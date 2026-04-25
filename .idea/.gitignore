@@ -8,4 +8,4 @@
 /dataSources.local.xml
 # 基于编辑器的 HTTP 客户端请求
 /httpRequests/
-server/files_root_dir
+/server/files_root_dir/
