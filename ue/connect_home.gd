@@ -158,23 +158,117 @@ func _ready() -> void:
 	
 	#if current_state == 'init':
 	#	update_state()
-	#for_test()
+	for_test1()
+
+func for_test1():
+	# 确保在 Android 平台才执行
+	if OS.get_name() != "Android":
+		return
+
+	# 1. 获取 Android 核心对象和上下文 (Context)
+	var android_runtime = Engine.get_singleton("AndroidRuntime")
+	var context = android_runtime.get_context()
+
+	# 2. 获取 PackageManager
+	var package_manager = context.getPackageManager()
+
+	# 3. 创建并设置查询 Intent (ACTION_MAIN + CATEGORY_LAUNCHER 表示所有“可启动”应用)
+	var intent_class = JavaClassWrapper.wrap("android.content.Intent")
+	var filter = intent_class.new("android.intent.action.MAIN")
+	filter.addCategory("android.intent.category.LAUNCHER")
+
+	# 4. 查询可解析此 Intent 的应用列表 (ResolveInfo)
+	var activities = package_manager.queryIntentActivities(filter, 0)
+
+	# 5. 遍历并获取应用名和包名
+	var result_str = "Installed Apps:\n"
+	for i in range(activities.size()):
+		var resolve_info = activities.get(i)
+		var app_info = resolve_info.activityInfo.applicationInfo
+
+		# 获取应用名 (App Name)
+		var app_name = package_manager.getApplicationLabel(app_info).toString()
+		# 获取包名 (Package Name)
+		var package_name = app_info.packageName
+
+		result_str += "- App Name: {0}, Package: {1}\n".format([app_name, package_name])
+		# 你也可以用 app_info.loadLabel(package_manager) 来获取名称
+
+	print(result_str)
 
 func for_test() -> void:
-	#current_state = 'query_files'
-	#query_files()
-	
-	#current_state = 'push_files_table'
-	#update_state()
-	
-	#var taskid:String = generate_task_id()
-	#var upload_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
-	#upload_obj.upload_a_file('/storage/emulated/0/ab/20220515183051.jpg')
-	
-	var taskid:String = generate_task_id()
-	var dl_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'no')
-	dl_obj.download_a_file('/storage/emulated/0/ab/02.jpg')
-	
+	var filepath = "/storage/emulated/0/ab/02.jpg"
+
+	# 1. 检查文件是否存在
+	if not FileAccess.file_exists(filepath):
+		print("文件不存在: ", filepath)
+		return
+
+	# 2. 获取 Android 运行时和 Activity
+	var android_runtime = Engine.get_singleton("AndroidRuntime")
+	if not android_runtime:
+		print("AndroidRuntime not available")
+		return
+	var activity = android_runtime.getActivity()
+
+	# 3. 包装需要的 Java 类
+	var MediaStore = JavaClassWrapper.wrap("android.provider.MediaStore")
+	var ImagesMedia = JavaClassWrapper.wrap("android.provider.MediaStore$Images$Media")
+	var Uri = JavaClassWrapper.wrap("android.net.Uri")
+
+	# 4. 通过静态方法获取 content:// URI，而不是直接访问静态字段
+	#    调用 MediaStore.getContentUri(String volumeName) 方法
+	var external_uri = MediaStore.getContentUri("external")  # "external" 代表外部存储
+
+	# 5. 准备查询参数，通过 DATA 字段匹配文件路径
+	var resolver = activity.getContentResolver()
+	var projection = ["_id"]
+	var selection = ImagesMedia.DATA + "=?"
+	var selection_args = [filepath]
+
+	# 6. 执行查询，获取文件的 _id
+	var cursor = resolver.query(external_uri, projection, selection, selection_args, null)
+	var content_uri = null
+	if cursor != null and cursor.moveToFirst():
+		var id_column_index = cursor.getColumnIndex("_id")
+		var id = cursor.getLong(id_column_index)
+		content_uri = Uri.withAppendedPath(external_uri, str(id))
+		cursor.close()
+
+	# 7. 如果查询失败，尝试将文件复制到应用私有目录作为备选方案
+	if content_uri == null:
+		print("MediaStore 查询失败，尝试备选方案...")
+		var dst_dir = "user://temp/"
+		var dir = DirAccess.open("user://")
+		if not dir.dir_exists("temp"):
+			dir.make_dir("temp")
+		var dst_path = "user://temp/" + filepath.get_file()
+		var src = FileAccess.open(filepath, FileAccess.READ)
+		var dst = FileAccess.open(dst_path, FileAccess.WRITE)
+		dst.store_buffer(src.get_buffer(src.get_length()))
+		dst.close()
+
+		# 获取应用私有目录下文件的 content:// URI
+		var FileProvider = JavaClassWrapper.wrap("androidx.core.content.FileProvider")
+		var context = activity.getApplicationContext()
+		var authority = activity.getPackageName() + ".fileprovider"
+		var file_obj = JavaClassWrapper.wrap("java.io.File").File(dst_path)
+		content_uri = FileProvider.getUriForFile(context, authority, file_obj)
+
+	# 8. 如果最终获取 URI 失败，退出
+	if content_uri == null:
+		print("无法获取文件的 content URI")
+		return
+
+	# 9. 创建并启动 Intent
+	var Intent = JavaClassWrapper.wrap("android.content.Intent")
+	var intent = Intent.Intent()
+	intent.setAction(Intent.ACTION_VIEW)
+	intent.setDataAndType(content_uri, "image/jpeg")
+	intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+	activity.startActivity(intent)
+	print("Intent 已启动")
+		
 ########################################### for GUI ################################
 func type_display_style(a, font_size, t=bt_theme) -> void:
 	a.set('theme_override_colors/font_color', Color(0.0, 0.0, 0.0, 1.0))

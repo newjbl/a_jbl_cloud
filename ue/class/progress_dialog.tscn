@@ -1,0 +1,78 @@
+[gd_scene format=3 uid="uid://bwxxrm7p4j3ho"]
+
+[sub_resource type="GDScript" id="GDScript_rc08f"]
+script/source = "extends CanvasLayer
+
+# 节点引用（假设节点树结构：CanvasLayer > BackGround > Panel > [Label1, ProgressBar, Label2]）
+@onready var background = $BackGround
+@onready var panel = $Panel
+@onready var label1 = $Panel/Label1
+@onready var progress_bar = $Panel/ProgressBar
+@onready var label2 = $Panel/Label2
+
+# 初始化窗口状态
+func _ready():
+	hide_window()          # 默认隐藏窗口
+	progress_bar.value = 0
+	progress_bar.max_value = 100
+
+# 显示窗口（可选：重置进度）
+func show_window():
+	background.show()
+	panel.show()
+
+# 隐藏窗口
+func hide_window():
+	background.hide()
+	panel.hide()
+
+# 设置进度条的值和最大值，以及可选的文字提示
+func set_progress(t:String, value: float, max_value: float, text: String = \"\"):
+	set_title(t)
+	progress_bar.max_value = max_value
+	progress_bar.value = value
+	if text != \"\":
+		label2.text = text   # 通常用 label2 显示进度描述，例如 \"下载中...\"
+	else:
+		label2.text = \"%d / %d\" % [value, max_value]  # 自动生成百分比信息
+
+# 设置主标签（label1）的文本
+func set_title(text: String):
+	label1.text = text
+
+# 便捷方法：按百分比更新进度（0-100）
+func _update_progress_percent(t:String, percent: float, text: String = \"\"):
+	var max_val = 100.0
+	var value = clamp(percent, 0.0, 100.0)
+	update_progress_safe(t, value, max_val, text)
+
+# 线程安全更新（例如在异步任务中调用）
+func update_progress_safe(t:String, value: float, max_value: float, text: String = \"\"):
+	call_deferred(\"set_progress\", t, value, max_value, text)
+"
+
+[node name="CanvasLayer" type="CanvasLayer" unique_id=514817741]
+script = SubResource("GDScript_rc08f")
+
+[node name="BackGround" type="ColorRect" parent="." unique_id=381458530]
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="Panel" type="Panel" parent="." unique_id=1161017386]
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="Label1" type="Label" parent="Panel" unique_id=1218627506]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 23.0
+
+[node name="ProgressBar" type="ProgressBar" parent="Panel" unique_id=1292433945]
+layout_mode = 0
+offset_right = 4.0
+offset_bottom = 27.0
+
+[node name="Label2" type="Label" parent="Panel" unique_id=1835448067]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 23.0

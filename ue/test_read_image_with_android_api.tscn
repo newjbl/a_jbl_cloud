@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://8m2h4aexh1aj"]
+
+[ext_resource type="Script" uid="uid://bgwn5skq82oqf" path="res://test_read_image_with_android_api.gd" id="1_48v7e"]
+
+[node name="Node2D" type="Node2D" unique_id=13441267]
+script = ExtResource("1_48v7e")
