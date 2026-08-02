@@ -8,14 +8,18 @@ extends CanvasLayer
 var dragging := false
 var drag_offset := Vector2.ZERO
 var log_buffer:Array = []
+var log_on:bool = false
 
 func _ready():
 	panel.position = Vector2i(100, 500)
 	log_text.bbcode_enabled = true
 	clear_btn.pressed.connect(_on_clear)
 	close_btn.pressed.connect(_on_close)
+	panel.visible = false
 
 func add_log(text:String):
+	if not log_on:
+		return
 	var ctime:String = Time.get_time_string_from_system()
 	var text_t:String = "[%s] %s" % [ctime, text]
 	print(text_t)
@@ -50,6 +54,8 @@ func _input(event):
 		panel.position = event.position - drag_offset
 
 func _process(_delta: float) -> void:
+	if not log_on:
+		return
 	if log_buffer.size() > 0:
 		for t in log_buffer:
 			log_text.push_font_size(20)

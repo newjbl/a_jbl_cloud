@@ -96,6 +96,11 @@ var bottom_hint:Label = null
 var top_hint:Label = null
 var hint_tween_bottom:Tween = null
 var hint_tween_top:Tween = null
+var menu_overlay:PanelContainer = null
+var details_overlay:PanelContainer = null
+var details_value_labels:Dictionary = {}
+var current_menu_filepath:String = ''
+var touching_image:bool = false
 
 ## touch control
 var drag_threshold: float = 50.0
@@ -856,6 +861,10 @@ func build_gui() -> void:
 	top_hint = _create_hint("到顶了，上滑翻页")
 	add_child(bottom_hint)
 	add_child(top_hint)
+	menu_overlay = _build_menu_overlay()
+	add_child(menu_overlay)
+	details_overlay = _build_details_overlay()
+	add_child(details_overlay)
 	
 func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 	log_window.add_log('[connect_home]->add_one_block')
@@ -1323,7 +1332,11 @@ func _on_search_bt_pressed(input_line:LineEdit) -> void:
 func _on_are2d_input(vp:Node, evt:InputEvent, si:int, filepath:String, _texture_rec:TextureRect) -> void:
 	if evt is InputEventScreenTouch and evt.is_pressed():
 		print("_on_are2d_input:%s, %s, %s, %s, %s"%[vp, evt, si, filepath, evt.position])
-		texture_touch_dic = {'filepath': filepath, 'pos': evt.position}
+		touching_image = true
+		var full_path:String = filepath
+		if not FileAccess.file_exists(full_path):
+			full_path = UE_ROOT_DIR.path_join(filepath)
+		texture_touch_dic = {'filepath': filepath, 'fullpath': full_path, 'pos': evt.position}
 
 func open_a_file(filepath:String) -> void:
 	if not FileAccess.file_exists(filepath):
@@ -1392,6 +1405,209 @@ func start_view_intent(content_uri, mime:String) -> void:
 		show_main_log('没有可打开该文件的程序!')
 	else:
 		log_window.add_log('[connect_home]->ACTION_VIEW start: %s, %s'%[mime, content_uri])
+
+func _show_file_menu() -> void:
+	if menu_overlay == null:
+		return
+	var mpos:Vector2 = get_global_mouse_position()
+	var msize:Vector2 = menu_overlay.custom_minimum_size
+	if msize.x <= 1 or msize.y <= 1:
+		msize = menu_overlay.get_minimum_size()
+	var wsize:Vector2 = Vector2(DisplayServer.window_get_size())
+	var pos:Vector2
+	pos.x = clampf(mpos.x - msize.x / 2.0, 8.0, wsize.x - msize.x - 8.0)
+	pos.y = mpos.y - msize.y - 16.0
+	pos.y = clampf(pos.y, 8.0, wsize.y - msize.y - 8.0)
+	menu_overlay.position = pos
+	menu_overlay.size = msize
+	menu_overlay.visible = true
+
+func _on_menu_locate_pressed() -> void:
+	menu_overlay.visible = false
+	_open_dir_in_file_manager(current_menu_filepath)
+
+func _on_menu_details_pressed() -> void:
+	menu_overlay.visible = false
+	_show_file_details(current_menu_filepath)
+
+func _build_menu_overlay() -> PanelContainer:
+	var panel:PanelContainer = PanelContainer.new()
+	panel.name = 'menu_overlay'
+	panel.z_index = 100
+	panel.visible = false
+	var sb:StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = Color(0.95, 0.95, 0.95, 0.98)
+	sb.set_corner_radius_all(12)
+	sb.set_border_width_all(2)
+	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.content_margin_left = 8.0
+	sb.content_margin_right = 8.0
+	sb.content_margin_top = 8.0
+	sb.content_margin_bottom = 8.0
+	panel.add_theme_stylebox_override('panel', sb)
+	panel.custom_minimum_size = Vector2(276, 154)
+	var vb:VBoxContainer = VBoxContainer.new()
+	vb.add_theme_constant_override('separation', 6)
+	var locate_btn:Button = Button.new()
+	locate_btn.text = '定位到文件'
+	locate_btn.custom_minimum_size = Vector2(260, 66)
+	locate_btn.add_theme_font_size_override('font_size', 26)
+	locate_btn.pressed.connect(_on_menu_locate_pressed)
+	var detail_btn:Button = Button.new()
+	detail_btn.text = '文件详细信息'
+	detail_btn.custom_minimum_size = Vector2(260, 66)
+	detail_btn.add_theme_font_size_override('font_size', 26)
+	detail_btn.pressed.connect(_on_menu_details_pressed)
+	vb.add_child(locate_btn)
+	vb.add_child(detail_btn)
+	panel.add_child(vb)
+	return panel
+
+func _open_dir_in_file_manager(_filepath:String) -> void:
+	if OS.get_name() != 'Android':
+		show_main_log('仅在Android设备上支持打开目录')
+		return
+	var dir_path:String = _filepath.get_base_dir()
+	log_window.add_log('[connect_home]->open dir: %s'%[dir_path])
+	var android_runtime = Engine.get_singleton("AndroidRuntime")
+	if not android_runtime:
+		return
+	var activity = android_runtime.getActivity()
+	var context = activity.getApplicationContext()
+	var authority:String = activity.getPackageName() + ".fileprovider"
+	var File = JavaClassWrapper.wrap("java.io.File")
+	var FileProvider = JavaClassWrapper.wrap("androidx.core.content.FileProvider")
+	var dir_obj = File.File(dir_path)
+	var content_uri = FileProvider.getUriForFile(context, authority, dir_obj)
+	var exc = JavaClassWrapper.get_exception()
+	if exc != null or content_uri == null:
+		log_window.add_log('[connect_home]->open dir exception:%s'%[exc])
+		show_main_log('无法打开目录!')
+		return
+	var Intent = JavaClassWrapper.wrap("android.content.Intent")
+	var intent = Intent.Intent()
+	intent.setAction("android.intent.action.VIEW")
+	intent.setDataAndType(content_uri, "resource/folder")
+	intent.addFlags(1) # Intent.FLAG_GRANT_READ_URI_PERMISSION
+	var pm = activity.getPackageManager()
+	var resolved = intent.resolveActivity(pm)
+	if resolved == null:
+		show_main_log('未找到文件管理器!')
+		return
+	activity.startActivity(intent)
+
+func _build_details_overlay() -> PanelContainer:
+	var panel:PanelContainer = PanelContainer.new()
+	panel.name = 'details_overlay'
+	panel.z_index = 110
+	panel.visible = false
+	var sb:StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = Color(0.96, 0.96, 0.96, 0.99)
+	sb.set_corner_radius_all(14)
+	sb.set_border_width_all(2)
+	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.content_margin_left = 20.0
+	sb.content_margin_right = 20.0
+	sb.content_margin_top = 16.0
+	sb.content_margin_bottom = 20.0
+	panel.add_theme_stylebox_override('panel', sb)
+	panel.custom_minimum_size = Vector2(560, 220)
+	var vb:VBoxContainer = VBoxContainer.new()
+	vb.custom_minimum_size = Vector2(540, 0)
+	vb.add_theme_constant_override('separation', 14)
+	var title_hb:HBoxContainer = HBoxContainer.new()
+	var title_lbl:Label = Label.new()
+	title_lbl.text = '文件详细信息'
+	title_lbl.add_theme_font_size_override('font_size', 32)
+	title_lbl.add_theme_color_override('font_color', Color(0, 0, 0, 1))
+	var title_ctl:Control = Control.new()
+	title_ctl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var close_btn:Button = Button.new()
+	close_btn.text = '关闭'
+	close_btn.add_theme_font_size_override('font_size', 24)
+	close_btn.pressed.connect(func(): panel.visible = false)
+	title_hb.add_child(title_lbl)
+	title_hb.add_child(title_ctl)
+	title_hb.add_child(close_btn)
+	vb.add_child(title_hb)
+	var rows:Array = [
+		['path', '文件路径'],
+		['name', '文件名称'],
+		['size', '文件大小'],
+		['created', '创建时间'],
+		['modified', '修改时间'],
+	]
+	for row in rows:
+		var hb:HBoxContainer = HBoxContainer.new()
+		var name_lbl:Label = Label.new()
+		name_lbl.text = row[1] + ': '
+		name_lbl.add_theme_font_size_override('font_size', 24)
+		name_lbl.add_theme_color_override('font_color', Color(0, 0, 0, 1))
+		name_lbl.custom_minimum_size = Vector2(140, 0)
+		var value_lbl:Label = Label.new()
+		value_lbl.add_theme_font_size_override('font_size', 24)
+		value_lbl.add_theme_color_override('font_color', Color(0, 0, 0, 1))
+		value_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		value_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		hb.add_child(name_lbl)
+		hb.add_child(value_lbl)
+		vb.add_child(hb)
+		details_value_labels[row[0]] = value_lbl
+	panel.add_child(vb)
+	return panel
+
+func _show_file_details(_filepath:String) -> void:
+	if details_overlay == null:
+		return
+	details_value_labels['path'].text = _filepath
+	details_value_labels['name'].text = _filepath.get_file()
+	details_value_labels['size'].text = _format_size(FileAccess.get_size(_filepath))
+	var mtime:int = FileAccess.get_modified_time(_filepath)
+	details_value_labels['modified'].text = Time.get_datetime_string_from_unix_time(mtime)
+	var ctime:String = _get_creation_time(_filepath)
+	details_value_labels['created'].text = ctime if ctime != '' else '未知'
+	details_overlay.reset_size()
+	var dsize:Vector2 = details_overlay.size
+	if dsize.x <= 1 or dsize.y <= 1:
+		dsize = details_overlay.custom_minimum_size
+	var wsize:Vector2 = Vector2(DisplayServer.window_get_size())
+	details_overlay.position = Vector2((wsize.x - dsize.x) / 2.0, (wsize.y - dsize.y) / 2.0 - 60.0)
+	details_overlay.size = dsize
+	details_overlay.visible = true
+
+func _format_size(bytes:int) -> String:
+	if bytes >= 1024 * 1024 * 1024:
+		return "%.2f GB" % (bytes / 1024.0 / 1024.0 / 1024.0)
+	elif bytes >= 1024 * 1024:
+		return "%.2f MB" % (bytes / 1024.0 / 1024.0)
+	elif bytes >= 1024:
+		return "%.2f KB" % (bytes / 1024.0)
+	return "%d B" % bytes
+
+func _get_creation_time(_filepath:String) -> String:
+	if OS.get_name() != 'Android':
+		return ''
+	var android_runtime = Engine.get_singleton("AndroidRuntime")
+	if not android_runtime:
+		return ''
+	var Files = JavaClassWrapper.wrap("java.nio.file.Files")
+	if Files == null:
+		return ''
+	var Paths = JavaClassWrapper.wrap("java.nio.file.Paths")
+	if Paths == null:
+		return ''
+	var path_obj = Paths.get(_filepath)
+	if path_obj == null:
+		return ''
+	var attrs = Files.readAttributes(path_obj, "unix:ctime")
+	var exc = JavaClassWrapper.get_exception()
+	if exc != null or attrs == null:
+		return ''
+	var ft = attrs.get("unix:ctime")
+	if ft == null:
+		return ''
+	var ms = ft.toMillis()
+	return Time.get_datetime_string_from_unix_time(ms / 1000.0)
 
 func date_string_to_unix_timestamp(y:String, m:String, d:String) -> int:
 	# 2. 构造初始日期字典
@@ -2057,10 +2273,16 @@ func _on_long_press_timeout() -> void:
 	if not is_long_pressing:
 		is_long_pressing = true
 		print('-----long pressed')
+		if touching_image:
+			var filepath:String = texture_touch_dic.get('fullpath', '')
+			if filepath != '' and FileAccess.file_exists(filepath):
+				current_menu_filepath = filepath
+				_show_file_menu()
 
 func _start_pressed() -> void:
 	is_pressing = true
 	is_long_pressing = false
+	touching_image = false
 	press_start_pos = get_global_mouse_position()
 	last_scroll = scroll_container.scroll_vertical
 	comtimer.wait_time = long_press_threshold
@@ -2121,6 +2343,19 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 	#or event is InputEventScreenTouch:
 		if event.pressed:
+			var pressed_pos:Vector2 = event.position
+			if menu_overlay and menu_overlay.visible:
+				if menu_overlay.get_global_rect().has_point(pressed_pos):
+					return
+				menu_overlay.visible = false
+				is_long_pressing = true
+				return
+			if details_overlay and details_overlay.visible:
+				if details_overlay.get_global_rect().has_point(pressed_pos):
+					return
+				details_overlay.visible = false
+				is_long_pressing = true
+				return
 			print('--->touch pressed, %s'%event)
 			_start_pressed()
 		else:
