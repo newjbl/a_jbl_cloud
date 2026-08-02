@@ -156,119 +156,6 @@ func _ready() -> void:
 	build_gui()
 	update_and_show_files()
 	
-	#if current_state == 'init':
-	#	update_state()
-	for_test1()
-
-func for_test1():
-	# 确保在 Android 平台才执行
-	if OS.get_name() != "Android":
-		return
-
-	# 1. 获取 Android 核心对象和上下文 (Context)
-	var android_runtime = Engine.get_singleton("AndroidRuntime")
-	var context = android_runtime.get_context()
-
-	# 2. 获取 PackageManager
-	var package_manager = context.getPackageManager()
-
-	# 3. 创建并设置查询 Intent (ACTION_MAIN + CATEGORY_LAUNCHER 表示所有“可启动”应用)
-	var intent_class = JavaClassWrapper.wrap("android.content.Intent")
-	var filter = intent_class.new("android.intent.action.MAIN")
-	filter.addCategory("android.intent.category.LAUNCHER")
-
-	# 4. 查询可解析此 Intent 的应用列表 (ResolveInfo)
-	var activities = package_manager.queryIntentActivities(filter, 0)
-
-	# 5. 遍历并获取应用名和包名
-	var result_str = "Installed Apps:\n"
-	for i in range(activities.size()):
-		var resolve_info = activities.get(i)
-		var app_info = resolve_info.activityInfo.applicationInfo
-
-		# 获取应用名 (App Name)
-		var app_name = package_manager.getApplicationLabel(app_info).toString()
-		# 获取包名 (Package Name)
-		var package_name = app_info.packageName
-
-		result_str += "- App Name: {0}, Package: {1}\n".format([app_name, package_name])
-		# 你也可以用 app_info.loadLabel(package_manager) 来获取名称
-
-	print(result_str)
-
-func for_test() -> void:
-	var filepath = "/storage/emulated/0/ab/02.jpg"
-
-	# 1. 检查文件是否存在
-	if not FileAccess.file_exists(filepath):
-		print("文件不存在: ", filepath)
-		return
-
-	# 2. 获取 Android 运行时和 Activity
-	var android_runtime = Engine.get_singleton("AndroidRuntime")
-	if not android_runtime:
-		print("AndroidRuntime not available")
-		return
-	var activity = android_runtime.getActivity()
-
-	# 3. 包装需要的 Java 类
-	var MediaStore = JavaClassWrapper.wrap("android.provider.MediaStore")
-	var ImagesMedia = JavaClassWrapper.wrap("android.provider.MediaStore$Images$Media")
-	var Uri = JavaClassWrapper.wrap("android.net.Uri")
-
-	# 4. 通过静态方法获取 content:// URI，而不是直接访问静态字段
-	#    调用 MediaStore.getContentUri(String volumeName) 方法
-	var external_uri = MediaStore.getContentUri("external")  # "external" 代表外部存储
-
-	# 5. 准备查询参数，通过 DATA 字段匹配文件路径
-	var resolver = activity.getContentResolver()
-	var projection = ["_id"]
-	var selection = ImagesMedia.DATA + "=?"
-	var selection_args = [filepath]
-
-	# 6. 执行查询，获取文件的 _id
-	var cursor = resolver.query(external_uri, projection, selection, selection_args, null)
-	var content_uri = null
-	if cursor != null and cursor.moveToFirst():
-		var id_column_index = cursor.getColumnIndex("_id")
-		var id = cursor.getLong(id_column_index)
-		content_uri = Uri.withAppendedPath(external_uri, str(id))
-		cursor.close()
-
-	# 7. 如果查询失败，尝试将文件复制到应用私有目录作为备选方案
-	if content_uri == null:
-		print("MediaStore 查询失败，尝试备选方案...")
-		var dst_dir = "user://temp/"
-		var dir = DirAccess.open("user://")
-		if not dir.dir_exists("temp"):
-			dir.make_dir("temp")
-		var dst_path = "user://temp/" + filepath.get_file()
-		var src = FileAccess.open(filepath, FileAccess.READ)
-		var dst = FileAccess.open(dst_path, FileAccess.WRITE)
-		dst.store_buffer(src.get_buffer(src.get_length()))
-		dst.close()
-
-		# 获取应用私有目录下文件的 content:// URI
-		var FileProvider = JavaClassWrapper.wrap("androidx.core.content.FileProvider")
-		var context = activity.getApplicationContext()
-		var authority = activity.getPackageName() + ".fileprovider"
-		var file_obj = JavaClassWrapper.wrap("java.io.File").File(dst_path)
-		content_uri = FileProvider.getUriForFile(context, authority, file_obj)
-
-	# 8. 如果最终获取 URI 失败，退出
-	if content_uri == null:
-		print("无法获取文件的 content URI")
-		return
-
-	# 9. 创建并启动 Intent
-	var Intent = JavaClassWrapper.wrap("android.content.Intent")
-	var intent = Intent.Intent()
-	intent.setAction(Intent.ACTION_VIEW)
-	intent.setDataAndType(content_uri, "image/jpeg")
-	intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-	activity.startActivity(intent)
-	print("Intent 已启动")
-		
 ########################################### for GUI ################################
 func type_display_style(a, font_size, t=bt_theme) -> void:
 	a.set('theme_override_colors/font_color', Color(0.0, 0.0, 0.0, 1.0))
@@ -1032,7 +919,7 @@ func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 		are2d.add_child(coll2d)
 		texture_rec.add_child(are2d)
 		var filepath_onue:String = filedic.get('ue_dir', '')
-		are2d.connect('input_event', _on_are2d_input.bind(UE_ROOT_DIR.path_join(filepath_onue), texture_rec))
+		are2d.connect('input_event', _on_are2d_input.bind(filepath_onue, texture_rec))
 		idy += 1
 	vbox_block.add_child(title_label)
 	vbox_block.add_child(grid_container)
@@ -1426,7 +1313,64 @@ func open_a_file(filepath:String) -> void:
 		show_main_log('文件不存在!')
 
 func open_a_file_now(_filepath:String) -> void:
-	print('open_a_file_now')
+	if OS.get_name() != 'Android':
+		show_main_log('仅在Android设备上支持打开文件')
+		return
+	log_window.add_log('[connect_home]->open_a_file_now:%s'%[_filepath])
+	var mime:String = get_mime_type_by_ext(_filepath)
+	var content_uri = share_file_via_fileprovider(_filepath)
+	if content_uri == null:
+		show_main_log('无法打开文件!')
+		return
+	start_view_intent(content_uri, mime)
+
+func get_mime_type_by_ext(_filepath:String) -> String:
+	var ext:String = _filepath.get_extension().to_lower()
+	var mime_dic:Dictionary = {
+		'jpg':'image/jpeg', 'jpeg':'image/jpeg', 'png':'image/png', 'gif':'image/gif',
+		'bmp':'image/bmp', 'webp':'image/webp', 'heic':'image/heic', 'heif':'image/heif',
+		'tif':'image/tiff', 'tiff':'image/tiff', 'svg':'image/svg+xml',
+		'mp4':'video/mp4', '3gp':'video/3gpp', '3g2':'video/3gpp2', 'mkv':'video/x-matroska',
+		'mov':'video/quicktime', 'avi':'video/x-msvideo', 'wmv':'video/x-ms-wmv', 'flv':'video/x-flv', 'webm':'video/webm',
+		'mp3':'audio/mpeg', 'wma':'audio/x-ms-wma', 'ogg':'audio/ogg', 'flac':'audio/flac',
+		'ape':'audio/x-ape', 'wav':'audio/wav', 'aac':'audio/aac', 'm4a':'audio/mp4', 'amr':'audio/amr',
+		'mka':'audio/x-matroska', 'ac3':'audio/ac3', 'dts':'audio/vnd.dts',
+		'pdf':'application/pdf', 'doc':'application/msword',
+		'docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+	}
+	return mime_dic.get(ext, 'application/octet-stream')
+
+func share_file_via_fileprovider(_filepath:String):
+	var android_runtime = Engine.get_singleton("AndroidRuntime")
+	if not android_runtime:
+		return null
+	var activity = android_runtime.getActivity()
+	var context = activity.getApplicationContext()
+	var authority:String = activity.getPackageName() + ".fileprovider"
+	var File = JavaClassWrapper.wrap("java.io.File")
+	var FileProvider = JavaClassWrapper.wrap("androidx.core.content.FileProvider")
+	var file_obj = File.File(_filepath)
+	var content_uri = FileProvider.getUriForFile(context, authority, file_obj)
+	log_window.add_log('[connect_home]->FileProvider content uri:%s'%[content_uri])
+	return content_uri
+
+func start_view_intent(content_uri, mime:String) -> void:
+	var android_runtime = Engine.get_singleton("AndroidRuntime")
+	if not android_runtime:
+		return
+	var activity = android_runtime.getActivity()
+	var Intent = JavaClassWrapper.wrap("android.content.Intent")
+	var intent = Intent.Intent()
+	intent.setAction("android.intent.action.VIEW")
+	intent.setDataAndType(content_uri, mime)
+	intent.addFlags(1) # Intent.FLAG_GRANT_READ_URI_PERMISSION
+	activity.startActivity(intent)
+	var exc = JavaClassWrapper.get_exception()
+	if exc != null:
+		log_window.add_log('[connect_home]->ACTION_VIEW exception:%s'%[exc])
+		show_main_log('没有可打开该文件的程序!')
+	else:
+		log_window.add_log('[connect_home]->ACTION_VIEW start: %s, %s'%[mime, content_uri])
 
 func date_string_to_unix_timestamp(y:String, m:String, d:String) -> int:
 	# 2. 构造初始日期字典
@@ -1857,6 +1801,16 @@ func upload__update_files_table_after_upload() -> void:
 			continue
 		if eachfile in f_table:
 			f_table[eachfile]['on_server'] = 'yes'
+	scan_file_rt = {}
+	scan_file_rt.all = 0
+	scan_file_rt.add = 0
+	scan_file_rt.mod = 0
+	scan_file_rt.del = 0
+	for eachfile in f_table:
+		if f_table[eachfile].get('on_ue', 'no') == 'yes':
+			scan_file_rt.all += 1
+			if f_table[eachfile].get('on_server', 'no') == 'no':
+				scan_file_rt.add += 1
 	_obj.write_db({'all_files_dic': f_table, 'rename_files_dic': d_table})
 	_obj._destory()
 	log_window.add_log("[connect_home]->update_files_table_after_upload_thread finish")
