@@ -88,6 +88,14 @@ var dis_sidx:int = 0
 var dis_height:int = 0
 var go_next_pag_try_cnt:int = 0
 var go_next_page_delay:int = 0
+var flip_tween:Tween = null
+var glow_tween:Tween = null
+var bottom_glow:TextureRect = null
+var top_glow:TextureRect = null
+var bottom_hint:Label = null
+var top_hint:Label = null
+var hint_tween_bottom:Tween = null
+var hint_tween_top:Tween = null
 
 ## touch control
 var drag_threshold: float = 50.0
@@ -840,6 +848,14 @@ func build_gui() -> void:
 	scroll_container.add_child(vbox_l3_vbox)
 	scroll_container.custom_minimum_size.y = 2000
 	scroll_container.get_v_scroll_bar().connect("value_changed", _on_scroll_value_changed)
+	bottom_glow = _create_glow(true)
+	top_glow = _create_glow(false)
+	add_child(bottom_glow)
+	add_child(top_glow)
+	bottom_hint = _create_hint("到底了，下滑翻页")
+	top_hint = _create_hint("到顶了，上滑翻页")
+	add_child(bottom_hint)
+	add_child(top_hint)
 	
 func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 	log_window.add_log('[connect_home]->add_one_block')
@@ -1035,7 +1051,9 @@ func update_ui() -> void:
 			break
 	show_sub_log()
 	dis_height = 0
+	vbox_l3_vbox.modulate.a = 1.0
 	log_window.add_log('[connect_home]->update_ui end:%s, %s, %s'%[dis_sidx, dis_sidx_list[dis_sidx], dis_cnt])
+	_update_page_hint()
 
 func clear_ui() -> void:
 	log_window.add_log('[connect_home]->clear_ui')
@@ -1856,6 +1874,8 @@ func go_next_page() -> void:
 			dis_sidx = next_sidx
 			update_ui()
 			scroll_container.scroll_vertical = 5
+			vbox_l3_vbox.modulate.a = 0.0
+			_flip_page_after_frame(1)
 		
 func go_previous_page() -> void:
 	go_next_pag_try_cnt += 1
@@ -1866,6 +1886,150 @@ func go_previous_page() -> void:
 			dis_sidx = next_sidx
 			update_ui()
 			scroll_container.scroll_vertical = 5
+			vbox_l3_vbox.modulate.a = 0.0
+			_flip_page_after_frame(-1)
+
+func _flip_page_after_frame(dir:int) -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if is_instance_valid(vbox_l3_vbox):
+		play_page_flip(dir)
+
+func play_page_flip(dir:int) -> void:
+	if flip_tween:
+		flip_tween.kill()
+	var cur_y:float = vbox_l3_vbox.position.y
+	vbox_l3_vbox.modulate.a = 0.0
+	vbox_l3_vbox.position.y = cur_y + 40.0 * dir
+	flip_tween = create_tween()
+	flip_tween.set_parallel(true)
+	flip_tween.tween_property(vbox_l3_vbox, "modulate:a", 1.0, 0.28).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	flip_tween.tween_property(vbox_l3_vbox, "position:y", cur_y, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+func play_bottom_bounce() -> void:
+	if flip_tween:
+		flip_tween.kill()
+	vbox_l3_vbox.modulate.a = 1.0
+	var cur_y:float = vbox_l3_vbox.position.y
+	flip_tween = create_tween()
+	flip_tween.tween_property(vbox_l3_vbox, "position:y", cur_y - 24.0, 0.12).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	flip_tween.tween_property(vbox_l3_vbox, "position:y", cur_y, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_flash_glow(true)
+
+func play_top_bounce() -> void:
+	if flip_tween:
+		flip_tween.kill()
+	vbox_l3_vbox.modulate.a = 1.0
+	var cur_y:float = vbox_l3_vbox.position.y
+	flip_tween = create_tween()
+	flip_tween.tween_property(vbox_l3_vbox, "position:y", cur_y + 24.0, 0.12).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	flip_tween.tween_property(vbox_l3_vbox, "position:y", cur_y, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_flash_glow(false)
+
+func _create_glow(at_bottom:bool) -> TextureRect:
+	var glow:TextureRect = TextureRect.new()
+	var grad:Gradient = Gradient.new()
+	grad.set_color(0, Color(1.0, 0.2, 0.2, 1.0))
+	grad.set_color(1, Color(1.0, 0.2, 0.2, 0.0))
+	var tex:GradientTexture2D = GradientTexture2D.new()
+	tex.gradient = grad
+	tex.fill = GradientTexture2D.FILL_LINEAR
+	if at_bottom:
+		tex.fill_from = Vector2(0, 1)
+		tex.fill_to = Vector2(0, 0)
+	else:
+		tex.fill_from = Vector2(0, 0)
+		tex.fill_to = Vector2(0, 1)
+	tex.width = 64
+	tex.height = 64
+	glow.texture = tex
+	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	glow.modulate.a = 0.0
+	return glow
+
+func _place_glow(glow:TextureRect, at_bottom:bool) -> void:
+	var rect:Rect2 = scroll_container.get_global_rect()
+	var h:float = 90.0
+	glow.size = Vector2(rect.size.x, h)
+	if at_bottom:
+		glow.position = Vector2(rect.position.x, rect.position.y + rect.size.y - h)
+	else:
+		glow.position = Vector2(rect.position.x, rect.position.y)
+
+func _flash_glow(at_bottom:bool) -> void:
+	var glow:TextureRect = bottom_glow if at_bottom else top_glow
+	if glow == null:
+		return
+	_place_glow(glow, at_bottom)
+	if glow_tween:
+		glow_tween.kill()
+	glow.modulate.a = 1.0
+	glow_tween = create_tween()
+	glow_tween.tween_interval(0.15)
+	glow_tween.tween_property(glow, "modulate:a", 0.0, 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+
+func _create_hint(text:String) -> Label:
+	var lbl:Label = Label.new()
+	lbl.text = text
+	lbl.name = 'page_hint'
+	lbl.add_theme_font_size_override("font_size", 22)
+	lbl.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 1.0))
+	var sb:StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = Color(0.1, 0.1, 0.1, 0.75)
+	sb.set_corner_radius_all(22)
+	sb.content_margin_left = 20.0
+	sb.content_margin_right = 20.0
+	sb.content_margin_top = 12.0
+	sb.content_margin_bottom = 12.0
+	lbl.add_theme_stylebox_override("normal", sb)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl.modulate.a = 0.0
+	lbl.visible = false
+	lbl.size = lbl.get_minimum_size()
+	return lbl
+
+func _place_hint(lbl:Label, at_bottom:bool) -> void:
+	if lbl.size.x <= 1 or lbl.size.y <= 1:
+		lbl.size = lbl.get_minimum_size()
+	var rect:Rect2 = scroll_container.get_global_rect()
+	var margin:float = 24.0
+	if at_bottom:
+		lbl.position = Vector2(rect.position.x + rect.size.x - lbl.size.x - margin, rect.position.y + rect.size.y - lbl.size.y - margin)
+	else:
+		lbl.position = Vector2(rect.position.x + rect.size.x - lbl.size.x - margin, rect.position.y + margin)
+
+func _set_hint_visible(lbl:Label, at_bottom:bool, show:bool) -> void:
+	if lbl == null:
+		return
+	if lbl.visible == show:
+		if show:
+			_place_hint(lbl, at_bottom)
+		return
+	var tween:Tween = hint_tween_bottom if at_bottom else hint_tween_top
+	if tween:
+		tween.kill()
+	_place_hint(lbl, at_bottom)
+	if show:
+		lbl.visible = true
+		lbl.modulate.a = 0.0
+		tween = create_tween()
+		tween.tween_property(lbl, "modulate:a", 1.0, 0.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	else:
+		tween = create_tween()
+		tween.tween_property(lbl, "modulate:a", 0.0, 0.15).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		tween.tween_callback(func(): lbl.visible = false)
+	if at_bottom:
+		hint_tween_bottom = tween
+	else:
+		hint_tween_top = tween
+
+func _update_page_hint() -> void:
+	if bottom_hint == null or top_hint == null:
+		return
+	var at_bottom:bool = _is_at_bottom() and (dis_sidx + 1 < dis_sidx_list.size())
+	var at_top:bool = _is_at_top() and (dis_sidx > 0)
+	_set_hint_visible(bottom_hint, true, at_bottom)
+	_set_hint_visible(top_hint, false, at_top)
 
 func _is_content_scrollable() -> bool:
 	var v_scroll = scroll_container.get_v_scroll_bar()
@@ -1885,6 +2049,7 @@ func _is_at_bottom() -> bool:
 func _on_scroll_value_changed(value: int):
 	print(value)
 	last_scroll = value
+	_update_page_hint()
 
 func _on_long_press_timeout() -> void:
 	if not is_pressing:
@@ -1910,14 +2075,26 @@ func _end_pressed() -> void:
 	var can_scroll = _is_content_scrollable()
 	if not can_scroll:
 		if drag_distance < 0:
-			go_next_page()
+			if dis_sidx + 1 >= dis_sidx_list.size():
+				play_bottom_bounce()
+			else:
+				go_next_page()
 		else:
-			go_previous_page()
+			if dis_sidx <= 0:
+				play_top_bounce()
+			else:
+				go_previous_page()
 		return
 	if drag_distance < 0 and _is_at_bottom():
-		go_next_page()
+		if dis_sidx + 1 >= dis_sidx_list.size():
+			play_bottom_bounce()
+		else:
+			go_next_page()
 	elif drag_distance > 0 and _is_at_top():
-		go_previous_page()
+		if dis_sidx <= 0:
+			play_top_bounce()
+		else:
+			go_previous_page()
 		
 func _process(_del)	-> void:
 	for taskid in clear_dic:
