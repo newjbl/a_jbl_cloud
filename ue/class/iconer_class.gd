@@ -16,10 +16,7 @@ func _init(_log_window) -> void:
 func create_icon(file_dic, outdir, icon_size=256) -> void:
 	log_window.add_log("[iconer_class]->create_icon")	
 	if _android_plugin:
-		print(_android_plugin.test())
-		#_android_plugin.createThumbnails(file_dic.keys(), file_dic.values(), outdir, icon_size)
-		print(JSON.stringify(file_dic))
-		_android_plugin.createThumbnails(JSON.stringify(file_dic), outdir, icon_size)
+		_android_plugin.create_icon(JSON.stringify(file_dic), outdir, icon_size)
 		log_window.add_log("[iconer_class]->create_icon finish")	
 	else:
 		log_window.add_log("_android_plugin is null")	

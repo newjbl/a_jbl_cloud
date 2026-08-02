@@ -903,7 +903,11 @@ func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 		texture_rec.custom_minimum_size = Vector2i(s, s)
 		texture_rec.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		if FileAccess.file_exists(icon_path):
-			texture_rec.texture = load(icon_path)
+			var _img:Image = Image.load_from_file(icon_path)
+			if _img != null:
+				texture_rec.texture = ImageTexture.create_from_image(_img)
+			else:
+				texture_rec.texture = load("res://icon.svg")
 		else:
 			texture_rec.texture = load("res://icon.svg")
 		grid_container.add_child(texture_vbox)
@@ -1036,7 +1040,6 @@ func update_ui() -> void:
 func clear_ui() -> void:
 	log_window.add_log('[connect_home]->clear_ui')
 	for obj in vbox_l3_vbox.get_children():
-		vbox_l3_vbox.remove_child(obj)
 		obj.queue_free()
 		
 func sort_dic(indic:Dictionary) -> Dictionary:

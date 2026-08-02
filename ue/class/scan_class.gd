@@ -88,8 +88,8 @@ func merger_table() -> void:
 		var ext:String = server_files_dic[eachfile]['filetype']
 		var ft:String = ext_type_dic.get(ext, 'Others')
 		if ft not in iconer_file_dic:
-			iconer_file_dic[ft] = []
-		iconer_file_dic[ft].append(eachfile)
+			iconer_file_dic[ft] = {}
+		iconer_file_dic[ft][eachfile] = server_files_dic[eachfile].get('md5', '')
 	iconer_c.create_icon(iconer_file_dic, ProjectSettings.globalize_path(icon_dir), 256)
 	write_db({"all_files_dic": server_files_dic, "rename_files_dic": rename_files_dic})
 	
