@@ -178,6 +178,7 @@ def handle_ue_upload(upload_socket:socket.socket, client_addr:tuple):
     finally:
         if '[closed]' not in str(upload_socket):
             update_login_dic(upload_socket)
+            upload_socket.shutdown(socket.SHUT_RDWR)
             upload_socket.close()
         print("[%s]ue(%s) upload link disconnect"%(datetime.now(), client_addr))
 
@@ -338,6 +339,7 @@ def handle_ue_upload_do(upload_socket:socket.socket, client_addr:tuple, upload_t
             upload_text['is_uploading'] = False
             print("[%s]ue(%s) upload finish:%s"%(datetime.now(), client_addr, fin_file_name))
             update_login_dic(upload_socket)
+            upload_socket.shutdown(socket.SHUT_RDWR)
             upload_socket.close()
             print("[%s]ue(%s) upload link disconnect"%(datetime.now(), client_addr))
             return 'finish'

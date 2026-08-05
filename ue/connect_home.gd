@@ -101,6 +101,10 @@ var details_overlay:PanelContainer = null
 var details_value_labels:Dictionary = {}
 var current_menu_filepath:String = ''
 var touching_image:bool = false
+var confirm_download_overlay:PanelContainer = null
+var download_progress_overlay:PanelContainer = null
+var download_progress_bar:ProgressBar = null
+var download_progress_label:Label = null
 
 ## touch control
 var drag_threshold: float = 50.0
@@ -127,10 +131,10 @@ func _ready() -> void:
 	if OS.get_name() == 'Android':
 		OS.request_permissions()
 		var p:PackedStringArray = OS.get_granted_permissions()
-		log_window.add_log("got these permissions:%s"%p)
+		print("got these permissions:%s"%p)
 	
-	log_window.add_log("ue cfg dir is: %s"%ProjectSettings.globalize_path("user://"))
-	log_window.add_log("ue scan root dir is: %s"%ProjectSettings.globalize_path(UE_ROOT_DIR))
+	print("ue cfg dir is: %s"%ProjectSettings.globalize_path("user://"))
+	print("ue scan root dir is: %s"%ProjectSettings.globalize_path(UE_ROOT_DIR))
 	if not DirAccess.dir_exists_absolute("user://db//"):
 		DirAccess.make_dir_recursive_absolute("user://db//")
 	if not DirAccess.dir_exists_absolute("user://db/icon//"):
@@ -165,7 +169,7 @@ func _ready() -> void:
 	
 	load_cfg()
 	load_setting()
-	log_window.add_log("%s, %s, %s, %s" % [UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, DOWNLOAD_PORT])
+	print("%s, %s, %s, %s" % [UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, DOWNLOAD_PORT])
 	build_gui()
 	update_and_show_files()
 	
@@ -179,10 +183,10 @@ func type_display_style(a, font_size, t=bt_theme) -> void:
 	a.add_theme_font_size_override('font_size', font_size)
 	
 func build_gui() -> void:
-	log_window.add_log('[connect_home]->build_gui')
+	print('[connect_home]->build_gui')
 	win_size = DisplayServer.window_get_size() - Vector2i(100, 100)
 	$bd_color.custom_minimum_size = win_size + Vector2i(100, 100)
-	log_window.add_log("%s, %s"%[win_size.x, win_size.y])
+	print("%s, %s"%[win_size.x, win_size.y])
 	var vbox_top:VBoxContainer = VBoxContainer.new()
 	vbox_top.name = 'TOP'
 	vbox_top.size = win_size
@@ -867,7 +871,7 @@ func build_gui() -> void:
 	add_child(details_overlay)
 	
 func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
-	log_window.add_log('[connect_home]->add_one_block')
+	print('[connect_home]->add_one_block')
 	var s:int = (win_size.x - 10) / 3
 	var vbox_block:VBoxContainer = VBoxContainer.new()
 	vbox_block.name = 'vbox_block_%s'%[idx]
@@ -962,7 +966,7 @@ func wrap_txt(intxt:String, maxlen:int) -> Array:
 	return [intxt]
 	
 func sort_files_by_method_duration(f_table:Dictionary) -> Dictionary:
-	log_window.add_log('[connect_home]->sort_files_by_method_duration')
+	print('[connect_home]->sort_files_by_method_duration')
 	var result:Dictionary = {}
 	var start_ts:int = DIS_DURATION[0]
 	var end_ts:int = DIS_DURATION[1]
@@ -989,7 +993,7 @@ func sort_files_by_method_duration(f_table:Dictionary) -> Dictionary:
 			'MONTH':
 				key = _ts_to_month_str(ts)
 			_:
-				log_window.add_log('[connect_home]->sort_files_by_method_duration: DIS_SIZE Error')
+				print('[connect_home]->sort_files_by_method_duration: DIS_SIZE Error')
 				return {}
 		if not result.has(key):
 			result[key] = []
@@ -1005,7 +1009,7 @@ func update_and_show_files() -> void:
 	_update_show_thread.start(update_and_show_files_thread)
 
 func update_and_show_files_thread() -> void:
-	log_window.add_log('[connect_home]->update_and_show_files_thread')
+	print('[connect_home]->update_and_show_files_thread')
 	var taskid:String = generate_task_id()
 	var _obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
 	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
@@ -1017,7 +1021,7 @@ func update_and_show_files_thread() -> void:
 	#call_deferred('update_ui', file_dic)
 	need_update_ui = true
 	_obj._destory()
-	#log_window.add_log('[connect_home]->update_and_show_files_thread:thread_finish:%s'%[display_file_dic.size()])
+	#print('[connect_home]->update_and_show_files_thread:thread_finish:%s'%[display_file_dic.size()])
 
 func get_dis_sidx_list() -> void:
 	dis_sidx_list = []
@@ -1042,7 +1046,7 @@ func get_dis_sidx_list() -> void:
 	print('[connect_home]->get_dis_sidx_list:dis_sidx_list is:', dis_sidx_list)
 	
 func update_ui() -> void:
-	log_window.add_log('[connect_home]->update_ui:%s, %s'%[dis_sidx, dis_sidx_list[dis_sidx]])
+	print('[connect_home]->update_ui:%s, %s'%[dis_sidx, dis_sidx_list[dis_sidx]])
 	clear_ui()
 	var timek_list:Array = display_file_dic.keys()
 	timek_list.sort()
@@ -1061,11 +1065,11 @@ func update_ui() -> void:
 	show_sub_log()
 	dis_height = 0
 	vbox_l3_vbox.modulate.a = 1.0
-	log_window.add_log('[connect_home]->update_ui end:%s, %s, %s'%[dis_sidx, dis_sidx_list[dis_sidx], dis_cnt])
+	print('[connect_home]->update_ui end:%s, %s, %s'%[dis_sidx, dis_sidx_list[dis_sidx], dis_cnt])
 	_update_page_hint()
 
 func clear_ui() -> void:
-	log_window.add_log('[connect_home]->clear_ui')
+	print('[connect_home]->clear_ui')
 	for obj in vbox_l3_vbox.get_children():
 		obj.queue_free()
 		
@@ -1107,18 +1111,18 @@ func _ts_to_month_str(ts:int) -> String:
 	return "%04d-%02d"%[dt['year'], dt['month']]
 	
 func _on_login_bt_pressed() -> void:
-	log_window.add_log('[connect_home]->_on_login_bt_pressed')
+	print('[connect_home]->_on_login_bt_pressed')
 	vbox_l1_1_login.visible = not vbox_l1_1_login.visible
 	_force_win()
 	
 func _on_setting_bt_pressed() -> void:
-	log_window.add_log('[connect_home]->_on_setting_bt_pressed')
+	print('[connect_home]->_on_setting_bt_pressed')
 	vbox_l1_2_setting.visible = not vbox_l1_2_setting.visible
 	_force_win()
 	
 func _on_save_cfg_bt_pressed(_login_tiltle_label:Label, save_cfg_bt:Button, server_ip_input:LineEdit, 
 upload_port_input:LineEdit, download_port_input:LineEdit, usr_input:LineEdit, psd_input:LineEdit) -> void:
-	log_window.add_log('[connect_home]->_on_save_cfg_bt_pressed')
+	print('[connect_home]->_on_save_cfg_bt_pressed')
 	save_cfg_bt.text = '保存中... ...'
 	SERVER_IP = server_ip_input.text
 	UPLOAD_PORT = int(upload_port_input.text)
@@ -1133,14 +1137,14 @@ upload_port_input:LineEdit, download_port_input:LineEdit, usr_input:LineEdit, ps
 	update_and_show_files()
 
 func _on_delete_cfg_bt_pressed() -> void:
-	log_window.add_log('[connect_home]->_on_delete_cfg_bt_pressed')
+	print('[connect_home]->_on_delete_cfg_bt_pressed')
 	if FileAccess.file_exists(CFG_PATH):
 		DirAccess.remove_absolute(CFG_PATH)
 	
 func _on_test_bt_pressed(login_title_label:Label, test_bt:Button, server_ip_input:LineEdit, 
 upload_port_input:LineEdit, download_port_input:LineEdit, usr_input:LineEdit, psd_input:LineEdit,
 poolmax=10, loopmax=3):
-	log_window.add_log('[connect_home]->_on_test_bt_pressed')
+	print('[connect_home]->_on_test_bt_pressed')
 	var r = false
 	test_bt.text = '测试中... ...'
 	var _SERVER_IP:String = server_ip_input.text
@@ -1165,7 +1169,7 @@ poolmax=10, loopmax=3):
 	return r
 
 func _on_setting_save_bt_pressed(setting_save_bt:Button) -> void:
-	log_window.add_log('[connect_home]->_on_setting_save_bt_pressed:%s, %s, %s, %s, %s'%[JSON.stringify(SCAN_DIR_DIC), DIS_SIZE, '~'.join(DIS_DURATION),
+	print('[connect_home]->_on_setting_save_bt_pressed:%s, %s, %s, %s, %s'%[JSON.stringify(SCAN_DIR_DIC), DIS_SIZE, '~'.join(DIS_DURATION),
 	SORT_METHOD, UE_SAVE_TIME])
 	save_setting()	
 	setting_save_bt.add_theme_color_override('font_color', Color(0.0, 1.0, 0.0, 1.0))
@@ -1173,17 +1177,17 @@ func _on_setting_save_bt_pressed(setting_save_bt:Button) -> void:
 	update_and_show_files()
 
 func _on_setting_delete_bt_pressed() -> void:
-	log_window.add_log('[connect_home]->_on_setting_delete_bt_pressed')
+	print('[connect_home]->_on_setting_delete_bt_pressed')
 	if FileAccess.file_exists(SETTING_PATH):
 		DirAccess.remove_absolute(SETTING_PATH)
 	
 func _on_dis_size_toggled(_idx:int, a:CheckBox) -> void:
-	log_window.add_log('[connect_home]->_on_dis_size_toggled')
+	print('[connect_home]->_on_dis_size_toggled')
 	DIS_SIZE = a.name
 
 func _on_time_duration_selectd(_idx:int, y1:OptionButton, m1:OptionButton, d1:OptionButton, 
 y2:OptionButton, m2:OptionButton, d2:OptionButton) -> void:
-	log_window.add_log("%s, %s, %s,   %s, %s, %s"%[y1.selected, m1.selected, d1.selected, y2.selected, 
+	print("%s, %s, %s,   %s, %s, %s"%[y1.selected, m1.selected, d1.selected, y2.selected, 
 	m2.selected, d2.selected])
 	var yy1:String = y1.get_item_text(y1.selected)
 	var mm1:String = m1.get_item_text(m1.selected)
@@ -1191,7 +1195,7 @@ y2:OptionButton, m2:OptionButton, d2:OptionButton) -> void:
 	var yy2:String = y2.get_item_text(y2.selected)
 	var mm2:String = m2.get_item_text(m2.selected)
 	var dd2:String = d2.get_item_text(d2.selected)
-	log_window.add_log("%s, %s, %s,   %s, %s, %s"%[yy1, mm1, dd1, yy2, mm2, dd2])
+	print("%s, %s, %s,   %s, %s, %s"%[yy1, mm1, dd1, yy2, mm2, dd2])
 	DIS_DURATION[0] = date_string_to_unix_timestamp(yy1, mm1, dd1)
 	DIS_DURATION[1] = date_string_to_unix_timestamp(yy2, mm2, dd2)
 	print(DIS_DURATION)
@@ -1217,24 +1221,24 @@ func _force_win() -> void:
 
 ### init -> pull_files_table -> scan_files -> deal_files -> update_and_show_files
 func _on_scan_bt_pressed() -> void:
-	log_window.add_log('[connect_home]->_on_scan_bt_pressed')
+	print('[connect_home]->_on_scan_bt_pressed')
 	scan__start_scan()
 
 ### upload_files -> push_files_table -> update_and_show_files
 func _on_upload_bt_pressed() -> void:
-	log_window.add_log('[connect_home]->_on_upload_bt_pressed')
+	print('[connect_home]->_on_upload_bt_pressed')
 	if upload_dic.get('notuploadyet', 0) > 0:
 		upload__start_upload()
 	else:
-		log_window.add_log('[connect_home]->_on_upload_bt_pressed:no need upload')
+		print('[connect_home]->_on_upload_bt_pressed:no need upload')
 		show_main_log('无需上传!')
 
 ### query_files -> delete_files -> push_files_table -> update_and_show_files
 func _on_delete_bt_pressed() -> void:
-	log_window.add_log('[connect_home]->_on_delete_bt_pressed')
+	print('[connect_home]->_on_delete_bt_pressed')
 	
 func _on_scan_dir_cb_toggled(idx:int, cb:CheckBox) -> void:
-	log_window.add_log('[connect_home]->_on_on_scan_dir_cb_toggled:%s, %s'%[idx, cb.name])
+	print('[connect_home]->_on_on_scan_dir_cb_toggled:%s, %s'%[idx, cb.name])
 	print(SCAN_DIR_DIC)
 	if cb.name not in SCAN_DIR_DIC:
 		return
@@ -1340,7 +1344,8 @@ func _on_are2d_input(vp:Node, evt:InputEvent, si:int, filepath:String, _texture_
 
 func open_a_file(filepath:String) -> void:
 	if not FileAccess.file_exists(filepath):
-		download_a_file(filepath)
+		_show_download_confirm_dialog(filepath)
+		return
 	if FileAccess.file_exists(filepath):
 		open_a_file_now(filepath)
 	else:
@@ -1350,7 +1355,7 @@ func open_a_file_now(_filepath:String) -> void:
 	if OS.get_name() != 'Android':
 		show_main_log('仅在Android设备上支持打开文件')
 		return
-	log_window.add_log('[connect_home]->open_a_file_now:%s'%[_filepath])
+	print('[connect_home]->open_a_file_now:%s'%[_filepath])
 	var mime:String = get_mime_type_by_ext(_filepath)
 	var content_uri = share_file_via_fileprovider(_filepath)
 	if content_uri == null:
@@ -1385,7 +1390,7 @@ func share_file_via_fileprovider(_filepath:String):
 	var FileProvider = JavaClassWrapper.wrap("androidx.core.content.FileProvider")
 	var file_obj = File.File(_filepath)
 	var content_uri = FileProvider.getUriForFile(context, authority, file_obj)
-	log_window.add_log('[connect_home]->FileProvider content uri:%s'%[content_uri])
+	print('[connect_home]->FileProvider content uri:%s'%[content_uri])
 	return content_uri
 
 func start_view_intent(content_uri, mime:String) -> void:
@@ -1401,10 +1406,10 @@ func start_view_intent(content_uri, mime:String) -> void:
 	activity.startActivity(intent)
 	var exc = JavaClassWrapper.get_exception()
 	if exc != null:
-		log_window.add_log('[connect_home]->ACTION_VIEW exception:%s'%[exc])
+		print('[connect_home]->ACTION_VIEW exception:%s'%[exc])
 		show_main_log('没有可打开该文件的程序!')
 	else:
-		log_window.add_log('[connect_home]->ACTION_VIEW start: %s, %s'%[mime, content_uri])
+		print('[connect_home]->ACTION_VIEW start: %s, %s'%[mime, content_uri])
 
 func _show_file_menu() -> void:
 	if menu_overlay == null:
@@ -1468,7 +1473,7 @@ func _open_dir_in_file_manager(_filepath:String) -> void:
 		show_main_log('仅在Android设备上支持打开目录')
 		return
 	var dir_path:String = _filepath.get_base_dir()
-	log_window.add_log('[connect_home]->open dir: %s'%[dir_path])
+	print('[connect_home]->open dir: %s'%[dir_path])
 	var android_runtime = Engine.get_singleton("AndroidRuntime")
 	if not android_runtime:
 		return
@@ -1481,7 +1486,7 @@ func _open_dir_in_file_manager(_filepath:String) -> void:
 	var content_uri = FileProvider.getUriForFile(context, authority, dir_obj)
 	var exc = JavaClassWrapper.get_exception()
 	if exc != null or content_uri == null:
-		log_window.add_log('[connect_home]->open dir exception:%s'%[exc])
+		print('[connect_home]->open dir exception:%s'%[exc])
 		show_main_log('无法打开目录!')
 		return
 	var Intent = JavaClassWrapper.wrap("android.content.Intent")
@@ -1645,7 +1650,7 @@ func delete_files() -> void:
 		if filepath in upload_again_list:
 			failed_cnt += 1
 			continue
-		log_window.add_log('[connect_home]->delete_files:will delete file: %s'%[filepath])
+		print('[connect_home]->delete_files:will delete file: %s'%[filepath])
 		if FileAccess.file_exists(filepath):
 			DirAccess.remove_absolute(filepath)
 			delete_dic[filepath] = 'deleted'
@@ -1656,9 +1661,205 @@ func delete_files() -> void:
 
 func download_a_file(_filepath:String) -> void:
 	show_main_log('下载中... ...')
-	#var taskid:String = generate_task_id()
-	#download_obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'no')
-	#download_obj.download_a_file(filepath)
+	var taskid:String = generate_task_id()
+	var _obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'no')
+	task_dic[taskid] = _obj
+	_obj.connect("report_result", download__end_download_file.bind(taskid, _obj))
+	_obj.download_a_file(_filepath)
+
+func download__end_download_file(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
+	print("[connect_home]->download__end_download_file:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
+	if who_i_am == 'tcp_transf_class' and taskid == _taskid and req_type == 'download':
+		match result:
+			'FINISH':
+				clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
+				show_main_log('下载完成:%s'%infor)
+				_hide_download_progress()
+				open_a_file_now(infor)
+			'ERROR7':
+				clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
+				show_main_log('文件不存在:%s'%infor)
+				_hide_download_progress()
+			'FAILED':
+				clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
+				show_main_log('下载失败:%s'%infor)
+				_hide_download_progress()
+			'PROCESS':
+				var a:Array = infor.split(';')
+				var current_size:int = a[0].to_int()
+				var total_size:int = a[1].to_int()
+				_update_download_progress(current_size, total_size)
+			'START':
+				pass
+			_:
+				print('[connect_home]->download__end_download_file:other result:%s'%result)
+		show_sub_log()
+	else:
+		print('[connect_home]->download__end_download_file:error message:%s, %s'%[req_type, result])
+
+func _show_download_confirm_dialog(filepath:String) -> void:
+	var wsize:Vector2 = Vector2(DisplayServer.window_get_size())
+	if confirm_download_overlay == null:
+		confirm_download_overlay = _build_confirm_download_overlay()
+		add_child(confirm_download_overlay)
+	var filesize:int = 0
+	var filename:String = filepath.get_file()
+	var f = FileAccess.open(UE_ROOT_DIR.path_join('files.txt'), FileAccess.READ)
+	if f:
+		var db = JSON.parse_string(f.get_as_text())
+		f.close()
+		if db:
+			var all_files = db.get('all_files_dic', {})
+			for key in all_files:
+				if all_files[key].get('ue_dir', '') == filepath:
+					filesize = all_files[key].get('filesize', 0)
+					break
+	var size_text:String = _format_size(filesize)
+	confirm_download_overlay.get_node('VBoxContainer/file_label').text = '文件: %s' % filename
+	confirm_download_overlay.get_node('VBoxContainer/size_label').text = '预计消耗流量: %s' % size_text
+	confirm_download_overlay.get_node('VBoxContainer').set_meta('filepath', filepath)
+	confirm_download_overlay.reset_size()
+	var dsize:Vector2 = confirm_download_overlay.size
+	if dsize.x <= 1 or dsize.y <= 1:
+		dsize = confirm_download_overlay.custom_minimum_size
+	confirm_download_overlay.position = Vector2((wsize.x - dsize.x) / 2.0, (wsize.y - dsize.y) / 2.0 - 60.0)
+	confirm_download_overlay.size = dsize
+	confirm_download_overlay.visible = true
+
+func _build_confirm_download_overlay() -> PanelContainer:
+	var panel:PanelContainer = PanelContainer.new()
+	panel.name = 'confirm_download_overlay'
+	panel.z_index = 120
+	panel.visible = false
+	var sb:StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = Color(0.95, 0.95, 0.95, 0.98)
+	sb.set_corner_radius_all(12)
+	sb.set_border_width_all(2)
+	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.content_margin_left = 20.0
+	sb.content_margin_right = 20.0
+	sb.content_margin_top = 16.0
+	sb.content_margin_bottom = 16.0
+	panel.add_theme_stylebox_override('panel', sb)
+	var vb:VBoxContainer = VBoxContainer.new()
+	vb.name = 'VBoxContainer'
+	vb.add_theme_constant_override('separation', 12)
+	var title_label:Label = Label.new()
+	title_label.text = '下载确认'
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_label.add_theme_font_size_override('font_size', 30)
+	title_label.add_theme_color_override('font_color', Color.BLACK)
+	var file_label:Label = Label.new()
+	file_label.name = 'file_label'
+	file_label.add_theme_font_size_override('font_size', 22)
+	file_label.add_theme_color_override('font_color', Color.BLACK)
+	var size_label:Label = Label.new()
+	size_label.name = 'size_label'
+	size_label.add_theme_font_size_override('font_size', 22)
+	size_label.add_theme_color_override('font_color', Color.BLACK)
+	var sep:HSeparator = HSeparator.new()
+	var hb:HBoxContainer = HBoxContainer.new()
+	hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	hb.add_theme_constant_override('separation', 30)
+	var cancel_bt:Button = Button.new()
+	cancel_bt.text = '取消'
+	cancel_bt.add_theme_font_size_override('font_size', 24)
+	cancel_bt.add_theme_color_override('font_color', Color.BLACK)
+	cancel_bt.custom_minimum_size = Vector2(140, 50)
+	cancel_bt.pressed.connect(_on_download_confirm_cancel)
+	var confirm_bt:Button = Button.new()
+	confirm_bt.text = '确认下载'
+	confirm_bt.add_theme_font_size_override('font_size', 24)
+	confirm_bt.add_theme_color_override('font_color', Color.BLACK)
+	confirm_bt.custom_minimum_size = Vector2(140, 50)
+	confirm_bt.pressed.connect(_on_download_confirm_ok)
+	hb.add_child(cancel_bt)
+	hb.add_child(confirm_bt)
+	vb.add_child(title_label)
+	vb.add_child(file_label)
+	vb.add_child(size_label)
+	vb.add_child(sep)
+	vb.add_child(hb)
+	panel.add_child(vb)
+	return panel
+
+func _on_download_confirm_cancel() -> void:
+	if confirm_download_overlay:
+		confirm_download_overlay.call_deferred('set_visible', false)
+
+func _on_download_confirm_ok() -> void:
+	if confirm_download_overlay:
+		confirm_download_overlay.call_deferred('set_visible', false)
+		var filepath:String = confirm_download_overlay.get_node('VBoxContainer').get_meta('filepath', '')
+		if filepath != '':
+			download_a_file(filepath)
+			_show_download_progress(filepath.get_file())
+
+func _show_download_progress(title:String) -> void:
+	var wsize:Vector2 = Vector2(DisplayServer.window_get_size())
+	if download_progress_overlay == null:
+		download_progress_overlay = _build_download_progress_overlay()
+		add_child(download_progress_overlay)
+	download_progress_overlay.get_node('VBoxContainer/title_label').text = '下载中: %s' % title
+	download_progress_bar.value = 0
+	download_progress_label.text = '0%'
+	download_progress_overlay.reset_size()
+	var dsize:Vector2 = download_progress_overlay.size
+	if dsize.x <= 1 or dsize.y <= 1:
+		dsize = download_progress_overlay.custom_minimum_size
+	download_progress_overlay.position = Vector2((wsize.x - dsize.x) / 2.0, (wsize.y - dsize.y) / 2.0 - 60.0)
+	download_progress_overlay.size = dsize
+	download_progress_overlay.visible = true
+
+func _update_download_progress(current_size:int, total_size:int) -> void:
+	if download_progress_bar and download_progress_label:
+		if total_size > 0:
+			var percent:int = int(100.0 * current_size / total_size)
+			download_progress_bar.call_deferred('set_value', percent)
+			download_progress_label.call_deferred('set_text', '%s / %s  (%d%%)'%[_format_size(current_size), _format_size(total_size), percent])
+
+func _hide_download_progress() -> void:
+	if download_progress_overlay:
+		download_progress_overlay.call_deferred('set_visible', false)
+
+func _build_download_progress_overlay() -> PanelContainer:
+	var panel:PanelContainer = PanelContainer.new()
+	panel.name = 'download_progress_overlay'
+	panel.z_index = 120
+	panel.visible = false
+	var sb:StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = Color(0.95, 0.95, 0.95, 0.98)
+	sb.set_corner_radius_all(12)
+	sb.set_border_width_all(2)
+	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.content_margin_left = 20.0
+	sb.content_margin_right = 20.0
+	sb.content_margin_top = 16.0
+	sb.content_margin_bottom = 16.0
+	panel.add_theme_stylebox_override('panel', sb)
+	var vb:VBoxContainer = VBoxContainer.new()
+	vb.name = 'VBoxContainer'
+	vb.add_theme_constant_override('separation', 12)
+	var title_label:Label = Label.new()
+	title_label.name = 'title_label'
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_label.add_theme_font_size_override('font_size', 26)
+	title_label.add_theme_color_override('font_color', Color.BLACK)
+	download_progress_bar = ProgressBar.new()
+	download_progress_bar.name = 'ProgressBar'
+	download_progress_bar.custom_minimum_size = Vector2(500, 30)
+	download_progress_bar.max_value = 100
+	download_progress_bar.value = 0
+	download_progress_label = Label.new()
+	download_progress_label.name = 'ProgressLabel'
+	download_progress_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	download_progress_label.add_theme_font_size_override('font_size', 20)
+	download_progress_label.add_theme_color_override('font_color', Color.BLACK)
+	vb.add_child(title_label)
+	vb.add_child(download_progress_bar)
+	vb.add_child(download_progress_label)
+	panel.add_child(vb)
+	return panel
 
 func update_files_table_after_upload() -> void:
 	#if update_files_aupload_thread:
@@ -1668,7 +1869,7 @@ func update_files_table_after_upload() -> void:
 	_update_files_aupload_thread.start(update_files_table_after_upload_thread)
 	
 func update_files_table_after_upload_thread() -> void:
-	log_window.add_log("[connect_home]->update_files_table_after_upload_thread start")
+	print("[connect_home]->update_files_table_after_upload_thread start")
 	var taskid:String = generate_task_id()
 	var _obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
 	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
@@ -1682,7 +1883,7 @@ func update_files_table_after_upload_thread() -> void:
 			f_table[eachfile]['on_server'] = 'yes'
 	_obj.write_db({'all_files_dic': f_table, 'rename_files_dic': d_table})
 	_obj._destory()
-	log_window.add_log("[connect_home]->update_files_table_after_upload_thread finish")
+	print("[connect_home]->update_files_table_after_upload_thread finish")
 	
 func update_files_table_after_delete() -> void:
 	#if update_files_adelete_thread:
@@ -1715,7 +1916,7 @@ func save_cfg():
 	if f:
 		f.store_string(cfg_infor)
 	else:
-		log_window.add_log('save cfg infor failed')
+		print('save cfg infor failed')
 
 func load_cfg():
 	var f = FileAccess.open(CFG_PATH, FileAccess.READ)
@@ -1731,7 +1932,7 @@ func load_cfg():
 		cfg_infor = f.get_line()
 		PSD = cfg_infor.replace('PSD:', '')
 	else:
-		log_window.add_log('load cfg failed2')
+		print('load cfg failed2')
 
 func save_setting() -> void:
 	var setting_infor:String = \
@@ -1745,7 +1946,7 @@ func save_setting() -> void:
 	if f:
 		f.store_string(setting_infor)
 	else:
-		log_window.add_log('save setting infor failed')
+		print('save setting infor failed')
 		
 func load_setting() -> void:
 	var f = FileAccess.open(SETTING_PATH, FileAccess.READ)
@@ -1769,7 +1970,7 @@ func load_setting() -> void:
 		cfg_infor = f.get_line()
 		DIS_FILE_TYPE = JSON.parse_string(cfg_infor.replace('DIS_FILE_TYPE:', ''))
 	else:
-		log_window.add_log('load cfg failed2')
+		print('load cfg failed2')
 func generate_task_id() -> String:
 	var time = Time.get_ticks_msec()
 	var task_id = 'task_' + str(time)
@@ -1811,14 +2012,14 @@ func show_upload_process() -> void:
 ## 1 ### init -> pull_files_table -> scan_files -> deal_files -> update_and_show_files
 func scan__start_scan() -> void:
 	current_doing = '【扫描】:'
-	log_window.add_log('[connect_home]->scan__start_scan')
+	print('[connect_home]->scan__start_scan')
 	show_main_log('开始扫描!')
 	scan_file_rt = {}
 	upload_dic = {'notuploadyet':0, 'uploading': 0, 'uploaded':0, 'uploadfailed':0, 'dic':{}}
 	scan__start_pull_files_table()
 
 func scan__start_pull_files_table() -> void:
-	log_window.add_log('[connect_home]->scan__start_pull_files_table')
+	print('[connect_home]->scan__start_pull_files_table')
 	show_main_log('拉取文件列表')
 	var taskid:String = generate_task_id()
 	var _obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'yes')
@@ -1828,7 +2029,7 @@ func scan__start_pull_files_table() -> void:
 	_obj.download_a_file(pull_file)
 	
 func scan__end_pull_files_table(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
-	log_window.add_log("[connect_home]->scan__end_pull_files_table:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
+	print("[connect_home]->scan__end_pull_files_table:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
 	if who_i_am == 'tcp_transf_class' and taskid == _taskid and req_type == 'download':
 		if result in ['FINISH', 'ERROR7']:
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
@@ -1838,13 +2039,13 @@ func scan__end_pull_files_table(who_i_am:String, taskid:String, req_type:String,
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			show_main_log('拉取失败，扫描停止!!!!!')
 		else:
-			log_window.add_log('[connect_home]->scan__end_pull_files_table, error result:%s, %s'%[req_type, result])
+			print('[connect_home]->scan__end_pull_files_table, error result:%s, %s'%[req_type, result])
 		show_sub_log()
 	else:
-		log_window.add_log('[connect_home]->scan__end_pull_files_table, error message:%s, %s'%[req_type, result])
+		print('[connect_home]->scan__end_pull_files_table, error message:%s, %s'%[req_type, result])
 	
 func scan__start_scan_files() -> void:
-	log_window.add_log('[connect_home]->scan__start_scan_files')
+	print('[connect_home]->scan__start_scan_files')
 	show_main_log('开始扫描文件...')
 	var taskid:String = generate_task_id()
 	var _obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
@@ -1854,7 +2055,7 @@ func scan__start_scan_files() -> void:
 	_obj.scan_a_dir(UE_ROOT_DIR)
 	
 func scan__end_scan_files(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:SCAN_C) -> void:
-	log_window.add_log("[connect_home]->scan__end_scan_files:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
+	print("[connect_home]->scan__end_scan_files:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
 	if who_i_am == 'scan_class' and taskid == _taskid and req_type == 'scan':
 		if result == 'FINISH':
 			scan_file_rt = JSON.parse_string(infor)
@@ -1865,13 +2066,13 @@ func scan__end_scan_files(who_i_am:String, taskid:String, req_type:String, infor
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			show_main_log('扫描文件失败, 扫描终止!!!!!')
 		else:
-			log_window.add_log('[connect_home]->scan__end_scan_files, error result:%s, %s'%[req_type, result])
+			print('[connect_home]->scan__end_scan_files, error result:%s, %s'%[req_type, result])
 		show_sub_log()
 	else:
-		log_window.add_log('[connect_home]->scan__end_scan_files, error message:%s, %s'%[req_type, result])
+		print('[connect_home]->scan__end_scan_files, error message:%s, %s'%[req_type, result])
 	
 func scan__start_deal_files() -> void:
-	log_window.add_log('[connect_home]->scan__start_deal_files')
+	print('[connect_home]->scan__start_deal_files')
 	show_main_log('整理文件!')
 	var taskid:String = generate_task_id()
 	var _obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
@@ -1896,7 +2097,7 @@ func scan__start_deal_files() -> void:
 	scan__end_scan()
 	
 func scan__end_scan() -> void:
-	log_window.add_log('[connect_home]->scan__end_scan')
+	print('[connect_home]->scan__end_scan')
 	show_main_log('扫描完成!')
 	show_sub_log()
 	update_and_show_files()
@@ -1904,7 +2105,7 @@ func scan__end_scan() -> void:
 ## 2 ###         upload_files -> push_files_table -> update_and_show_files
 func upload__start_upload() -> void:
 	current_doing = '【上传】:'
-	log_window.add_log('[connect_home]->upload__start_upload')
+	print('[connect_home]->upload__start_upload')
 	show_main_log('开始上传!')
 	show_sub_log()
 	#if upload_thread:
@@ -1915,12 +2116,12 @@ func upload__start_upload() -> void:
 	#build_upload_task()
 	
 func upload__start_upload_thread() -> void:
-	log_window.add_log('[connect_home]->upload__start_upload_thread')
+	print('[connect_home]->upload__start_upload_thread')
 	while upload_dic['notuploadyet'] > 0:
 		var need_upload_cnt:int = max(0, 5 - upload_dic['uploading'])
 		if need_upload_cnt <= 0:
 			continue
-		#log_window.add_log("[connect_home]->upload_files_thread:current upload_dic:%s"%[JSON.stringify(upload_dic['dic'])])
+		#print("[connect_home]->upload_files_thread:current upload_dic:%s"%[JSON.stringify(upload_dic['dic'])])
 		for filepath in upload_dic['dic']:
 			if upload_dic['dic'][filepath]['rt'] != 'notuploadyet':
 				continue
@@ -1928,12 +2129,12 @@ func upload__start_upload_thread() -> void:
 			upload_dic['uploading'] += 1
 			upload_dic['notuploadyet'] -= 1
 			show_sub_log()
-			log_window.add_log("[connect_home]->upload_files_thread:will upload:%s"%filepath)
+			print("[connect_home]->upload_files_thread:will upload:%s"%filepath)
 			upload__upload_a_file(filepath)
 			need_upload_cnt -= 1
 			if need_upload_cnt <= 0:
 				break
-	log_window.add_log("[connect_home]->upload_files_thread:thread_finish")
+	print("[connect_home]->upload_files_thread:thread_finish")
 
 func upload__upload_a_file(filepath:String) -> bool:
 	var taskid:String = generate_task_id()
@@ -1944,7 +2145,7 @@ func upload__upload_a_file(filepath:String) -> bool:
 	return true
 	
 func upload__receive_upload_finish(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
-	#log_window.add_log("[connect_home]->upload__receive_upload_finish:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
+	#print("[connect_home]->upload__receive_upload_finish:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
 	if who_i_am == 'tcp_transf_class' and req_type == 'upload' and taskid == _taskid:
 		#if result == 'START' and req_type in e2z_dic:
 		#	pass
@@ -1959,7 +2160,7 @@ func upload__receive_upload_finish(who_i_am:String, taskid:String, req_type:Stri
 		elif result == 'FAILED':
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			show_main_log('失败!')
-			log_window.add_log("[connect_home]->upload__receive_upload_finish:failed!!!!!!!")
+			print("[connect_home]->upload__receive_upload_finish:failed!!!!!!!")
 			upload_dic['dic'][infor]['rt'] = 'uploadfailed'
 			upload_dic['dic'][infor]['process'] = upload_dic['dic'][infor]['size']
 			upload_dic['uploadfailed'] += 1
@@ -1969,7 +2170,7 @@ func upload__receive_upload_finish(who_i_am:String, taskid:String, req_type:Stri
 				upload__start_query_files_dic(upload_dic)
 		elif result in ['FINISH', 'ERROR2']:
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
-			log_window.add_log("[connect_home]->upload__receive_upload_finish:upload file:%s, result:%s"%[infor, result])
+			print("[connect_home]->upload__receive_upload_finish:upload file:%s, result:%s"%[infor, result])
 			if result == 'FINISH':
 				show_main_log('上传完成:%s'%[infor])
 			else:
@@ -1982,13 +2183,13 @@ func upload__receive_upload_finish(who_i_am:String, taskid:String, req_type:Stri
 				show_upload_process()
 				upload__start_query_files_dic(upload_dic)
 		else:
-			log_window.add_log("[connect_home]->upload__receive_upload_finish:other message")
+			print("[connect_home]->upload__receive_upload_finish:other message")
 		show_sub_log()
 	else:
-		log_window.add_log("[connect_home]->upload__receive_upload_finish:unknown message:%s, %s"%[req_type, result])
+		print("[connect_home]->upload__receive_upload_finish:unknown message:%s, %s"%[req_type, result])
 
 func upload__start_query_files_dic(_filedic:Dictionary) -> void:
-	log_window.add_log("[connect_home]->upload__start_query_files_dic")
+	print("[connect_home]->upload__start_query_files_dic")
 	var taskid:String = generate_task_id()
 	var _obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
 	task_dic[taskid] = _obj
@@ -2006,27 +2207,27 @@ func upload__start_query_files_dic(_filedic:Dictionary) -> void:
 	_obj.query_files(querydic)
 	
 func upload__end_query_files_dic(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
-	log_window.add_log("[connect_home]->upload__end_query_files_dic:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
+	print("[connect_home]->upload__end_query_files_dic:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
 	if who_i_am == 'tcp_transf_class' and req_type == 'query' and taskid == _taskid:
 		if result == 'FINISH':
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			if infor != 'all ok':
-				var retry_dic:Dictionary = JSON.parse_string(infor)
-				for eachf in retry_dic:
+				var retry_files:Array = infor.split(';')
+				for eachf in retry_files:
 					if eachf in upload_dic.get('dic', {}):
 						upload_dic['dic'][eachf]['rt'] = 'notuploadyet'
 			upload__update_files_table_after_upload()
 		elif result == 'FAILED':
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
-			log_window.add_log("[connect_home]->upload__end_query_files_dic:failed!!!!!!!!!!!")
+			print("[connect_home]->upload__end_query_files_dic:failed!!!!!!!!!!!")
 		else:
-			log_window.add_log("[connect_home]->upload__end_query_files_dic:error result:%s, %s"%[req_type, result])
+			print("[connect_home]->upload__end_query_files_dic:error result:%s, %s"%[req_type, result])
 		show_sub_log()
 	else:
-		log_window.add_log("[connect_home]->upload__end_query_files_dic:error message:%s, %s"%[req_type, result])
+		print("[connect_home]->upload__end_query_files_dic:error message:%s, %s"%[req_type, result])
 
 func upload__update_files_table_after_upload() -> void:
-	log_window.add_log("[connect_home]->upload__update_files_table_after_upload start")
+	print("[connect_home]->upload__update_files_table_after_upload start")
 	var taskid:String = generate_task_id()
 	var _obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
 	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
@@ -2050,12 +2251,12 @@ func upload__update_files_table_after_upload() -> void:
 				scan_file_rt.add += 1
 	_obj.write_db({'all_files_dic': f_table, 'rename_files_dic': d_table})
 	_obj._destory()
-	log_window.add_log("[connect_home]->update_files_table_after_upload_thread finish")
+	print("[connect_home]->update_files_table_after_upload_thread finish")
 	show_sub_log()
 	upload__start_push_files_table()
 	
 func upload__start_push_files_table() -> void:
-	log_window.add_log("[connect_home]->upload__start_push_files_table")
+	print("[connect_home]->upload__start_push_files_table")
 	var taskid:String = generate_task_id()
 	var _obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'yes')
 	task_dic[taskid] = _obj
@@ -2064,7 +2265,7 @@ func upload__start_push_files_table() -> void:
 	_obj.upload_a_file(push_file)
 	
 func upload__end_push_files_table(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
-	log_window.add_log("[connect_home]->upload__end_push_files_table:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
+	print("[connect_home]->upload__end_push_files_table:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
 	if who_i_am == 'tcp_transf_class' and req_type == 'upload' and taskid == _taskid:
 		if result == 'FINISH':
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
@@ -2075,10 +2276,10 @@ func upload__end_push_files_table(who_i_am:String, taskid:String, req_type:Strin
 			show_main_log('上传失败!')
 			update_and_show_files()
 		else:
-			log_window.add_log("[connect_home]->upload__end_push_files_table: other result:%s"%result)
+			print("[connect_home]->upload__end_push_files_table: other result:%s"%result)
 		show_sub_log()
 	else:
-		log_window.add_log("[connect_home]->upload__end_push_files_table: other message:%s, %s"%[req_type, result])
+		print("[connect_home]->upload__end_push_files_table: other message:%s, %s"%[req_type, result])
 
 ###################################### function control end #####################################
 func go_next_page() -> void:

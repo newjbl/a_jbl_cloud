@@ -42,33 +42,29 @@ func scan_a_dir(scan_root_dir:String) -> void:
 	scan_thread.start(scan_a_dir_thread.bind(scan_root_dir))
 
 func scan_a_dir_thread(scan_root_dir:String) -> void:
-	#log_window.add_log('[scan_class]->scan_a_dir_thread:will scan:%s' %[scan_root_dir])
+	print('[scan_class]->scan_a_dir_thread:will scan:%s' %[scan_root_dir])
 	get_all_files(scan_root_dir)
 	scan_thread_running = false
 	merger_table()
 	emit_signal("scan_finished", 'scan_class', taskid, 'scan', JSON.stringify(scan_rt), 'FINISH')
 	
 func merger_table() -> void:
-	#log_window.add_log('[scan_class]->merger_table')
+	print('[scan_class]->merger_table')
 	var db_dic:Dictionary = read_db()
 	var server_files_dic:Dictionary = db_dic.get('all_files_dic', {})
 	var rename_files_dic:Dictionary = {}
-	#### 先注释掉， 因为不应该让UE告诉SERVER删除文件
-	#var rmv_files_list:Array = []
-	#for eachfile in server_files_dic:
-		###remove
-		#if eachfile not in new_files_dic and server_files_dic[eachfile].get('on_server', '') == 'no':
-			#rmv_files_list.append(eachfile)
-	#for eachfile in rmv_files_list:
-		#log_window.add_log('[scan_class]->merger_table:remove %s'%[eachfile])
-		#server_files_dic.erase(eachfile)
+	#### UE侧删除了的文件, 标记on_ue为no
+	for eachfile in server_files_dic:
+		if eachfile not in new_files_dic:
+			server_files_dic[eachfile]['on_ue'] = 'no'
+			scan_rt.del += 1
 	scan_rt.all = new_files_dic.keys().size()
 	for eachfile in new_files_dic:
 		var sdic = server_files_dic.get(eachfile, {})
 		var ndic = new_files_dic[eachfile]
 		##add
 		if eachfile not in server_files_dic:
-			log_window.add_log("[scan_class]->merger_table:add %s"%[eachfile])
+			print("[scan_class]->merger_table:add %s"%[eachfile])
 			server_files_dic[eachfile] = ndic
 			scan_rt.add = scan_rt.add + 1
 		##mod
@@ -82,7 +78,7 @@ func merger_table() -> void:
 				server_files_dic[eachfile] = ndic
 				rename_files_dic[eachfile] = bakfile
 				scan_rt.mod = scan_rt.mod + 1
-				log_window.add_log("mod:%s > %s"%[eachfile, bakfile])
+				print("mod:%s > %s"%[eachfile, bakfile])
 	var iconer_file_dic:Dictionary = {}
 	for eachfile in server_files_dic:
 		var ext:String = server_files_dic[eachfile]['filetype']
@@ -94,12 +90,12 @@ func merger_table() -> void:
 	write_db({"all_files_dic": server_files_dic, "rename_files_dic": rename_files_dic})
 	
 func get_all_files(scaned_path:String) -> void:
-	log_window.add_log('[scan_class]->get_all_files:will scan:%s'%[scaned_path])
+	print('[scan_class]->get_all_files:will scan:%s'%[scaned_path])
 	emit_signal("scan_finished", 'scan_class', taskid, 'scan', scaned_path, 'START')
 	var is_scan_path:bool = is_a_subdir_for_blist(scaned_path, scan_dir_list)
 	var dir:DirAccess = DirAccess.open(scaned_path)
 	if dir == null:
-		log_window.add_log("open dir failed:%s, reason:%s"%[scaned_path, DirAccess.get_open_error()])
+		print("open dir failed:%s, reason:%s"%[scaned_path, DirAccess.get_open_error()])
 		return
 	dir.list_dir_begin()
 	var current_name:String = dir.get_next()
@@ -110,16 +106,16 @@ func get_all_files(scaned_path:String) -> void:
 				get_all_files(current_path)
 		else:
 			if not is_scan_path:
-				log_window.add_log("[scan_class]->get_all_files:not scan dir:%s"%[scaned_path])
+				print("[scan_class]->get_all_files:not scan dir:%s"%[scaned_path])
 				current_name = dir.get_next()
 				continue
 			if current_name in ignore_file_list:
-				log_window.add_log("[scan_class]->get_all_files:ignore file:%s"%[current_name])
+				print("[scan_class]->get_all_files:ignore file:%s"%[current_name])
 				current_name = dir.get_next()
 				continue
 			var filetype = current_path.get_extension().to_upper()
 			if filetype not in scan_ext_list:
-				log_window.add_log("[scan_class]->get_all_files:ignore ext file:%s"%[current_name])
+				print("[scan_class]->get_all_files:ignore ext file:%s"%[current_name])
 				current_name = dir.get_next()
 				continue
 			if not is_a_subdir_for_blist(current_path, scan_dir_list):
@@ -135,7 +131,7 @@ func get_all_files(scaned_path:String) -> void:
 				'res3':''}
 		current_name = dir.get_next()
 	dir.list_dir_end()
-	log_window.add_log('[scan_class]->get_all_files:scan finish:%s'%[scaned_path])
+	print('[scan_class]->get_all_files:scan finish:%s'%[scaned_path])
 
 func is_a_subdir_for_b(a:String, b:String) -> bool:
 	var na = a.simplify_path().to_upper()
@@ -157,7 +153,7 @@ func _init_db() -> bool:
 			if not DirAccess.dir_exists_absolute(dir_path):
 				var err = DirAccess.make_dir_recursive_absolute(dir_path)
 				if err != OK:
-					log_window.add_log("[scan_class]->write_db:make dir failed:%s"%err)
+					print("[scan_class]->write_db:make dir failed:%s"%err)
 					return false
 		var f = FileAccess.open(db_path, FileAccess.WRITE)
 		if f:
@@ -166,7 +162,7 @@ func _init_db() -> bool:
 			return true
 		else:
 			var err = FileAccess.get_open_error() 
-			log_window.add_log("[scan_class]->write_db:open file failed:%s!!"%err)
+			print("[scan_class]->write_db:open file failed:%s!!"%err)
 			return false
 	return true
 	
@@ -179,7 +175,7 @@ func write_db(indic:Dictionary) -> bool:
 		return r
 	else:
 		var err = FileAccess.get_open_error() 
-		log_window.add_log("[scan_class]->write_db:open file failed:%s!!"%err)
+		print("[scan_class]->write_db:open file failed:%s!!"%err)
 	return false
 func read_db() -> Dictionary:
 	var f = FileAccess.open(db_path, FileAccess.READ_WRITE)
@@ -192,11 +188,11 @@ func read_db() -> Dictionary:
 			return jsoner.data
 	else:
 		var err = FileAccess.get_open_error() 
-		log_window.add_log("[scan_class]->read_db:open file failed:%s"%err)
+		print("[scan_class]->read_db:open file failed:%s"%err)
 	return {}
 
 func _on_scan_status_changed(who_i_am:String, _taskid:String, req_type:String, infor:String, result:String) -> void:
-	log_window.add_log("%s-%s %s %s %s" % [who_i_am, _taskid, req_type, infor, result])
+	print("%s-%s %s %s %s" % [who_i_am, _taskid, req_type, infor, result])
 	
 func _destory() -> void:
 	if scan_thread:
