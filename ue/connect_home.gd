@@ -105,6 +105,11 @@ var confirm_download_overlay:PanelContainer = null
 var download_progress_overlay:PanelContainer = null
 var download_progress_bar:ProgressBar = null
 var download_progress_label:Label = null
+var cleanup_overlay:PanelContainer = null
+var cleanup_days:int = 30
+var upload_detail_bt:Button = null
+var upload_details_overlay:PanelContainer = null
+var upload_details_list:VBoxContainer = null
 
 ## touch control
 var drag_threshold: float = 50.0
@@ -212,6 +217,17 @@ func build_gui() -> void:
 	logs_show.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	logs_show.label_settings = label_setting_font_15
 	hbox_l0_1.add_child(logs_show)
+	upload_detail_bt = Button.new()
+	upload_detail_bt.name = 'upload_detail_bt'
+	upload_detail_bt.flat = true
+	upload_detail_bt.icon = _create_spinner_texture()
+	upload_detail_bt.expand_icon = true
+	upload_detail_bt.custom_minimum_size = Vector2(40, 40)
+	upload_detail_bt.pivot_offset = Vector2(20, 20)
+	upload_detail_bt.visible = false
+	upload_detail_bt.tooltip_text = '查看上传详情'
+	upload_detail_bt.pressed.connect(_on_upload_detail_bt_pressed)
+	hbox_l0_1.add_child(upload_detail_bt)
 	
 	var hbox_l0_2:HBoxContainer = HBoxContainer.new()
 	hbox_l0_2.name = 'logs_show_details'
@@ -1236,7 +1252,101 @@ func _on_upload_bt_pressed() -> void:
 ### query_files -> delete_files -> push_files_table -> update_and_show_files
 func _on_delete_bt_pressed() -> void:
 	print('[connect_home]->_on_delete_bt_pressed')
-	
+	_show_cleanup_dialog()
+
+func _show_cleanup_dialog() -> void:
+	var wsize:Vector2 = Vector2(DisplayServer.window_get_size())
+	if cleanup_overlay == null:
+		cleanup_overlay = _build_cleanup_overlay()
+		add_child(cleanup_overlay)
+	cleanup_overlay.get_node('VBoxContainer/days_input').text = '%s'%UE_SAVE_TIME
+	cleanup_overlay.reset_size()
+	var dsize:Vector2 = cleanup_overlay.size
+	if dsize.x <= 1 or dsize.y <= 1:
+		dsize = cleanup_overlay.custom_minimum_size
+	cleanup_overlay.position = Vector2((wsize.x - dsize.x) / 2.0, (wsize.y - dsize.y) / 2.0 - 60.0)
+	cleanup_overlay.size = dsize
+	cleanup_overlay.visible = true
+
+func _build_cleanup_overlay() -> PanelContainer:
+	var panel:PanelContainer = PanelContainer.new()
+	panel.name = 'cleanup_overlay'
+	panel.z_index = 120
+	panel.visible = false
+	var sb:StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = Color(0.95, 0.95, 0.95, 0.98)
+	sb.set_corner_radius_all(12)
+	sb.set_border_width_all(2)
+	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.content_margin_left = 20.0
+	sb.content_margin_right = 20.0
+	sb.content_margin_top = 16.0
+	sb.content_margin_bottom = 16.0
+	panel.add_theme_stylebox_override('panel', sb)
+	var vb:VBoxContainer = VBoxContainer.new()
+	vb.name = 'VBoxContainer'
+	vb.add_theme_constant_override('separation', 12)
+	var title_label:Label = Label.new()
+	title_label.text = '清理文件'
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_label.add_theme_font_size_override('font_size', 30)
+	title_label.add_theme_color_override('font_color', Color.BLACK)
+	var tip_label:Label = Label.new()
+	tip_label.text = '清理几天前的文件?'
+	tip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tip_label.add_theme_font_size_override('font_size', 22)
+	tip_label.add_theme_color_override('font_color', Color.BLACK)
+	var days_input:LineEdit = LineEdit.new()
+	days_input.name = 'days_input'
+	days_input.text = '%s'%UE_SAVE_TIME
+	days_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	days_input.add_theme_font_size_override('font_size', 26)
+	days_input.add_theme_color_override('font_color', Color.BLACK)
+	days_input.custom_minimum_size = Vector2(200, 60)
+	var hint_label:Label = Label.new()
+	hint_label.text = '默认: 设置中的手机存储天数(%s天)'%UE_SAVE_TIME
+	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint_label.add_theme_font_size_override('font_size', 16)
+	hint_label.add_theme_color_override('font_color', Color(0.3, 0.3, 0.3, 1.0))
+	var sep:HSeparator = HSeparator.new()
+	var hb:HBoxContainer = HBoxContainer.new()
+	hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	hb.add_theme_constant_override('separation', 30)
+	var cancel_bt:Button = Button.new()
+	cancel_bt.text = '取消'
+	cancel_bt.add_theme_font_size_override('font_size', 24)
+	cancel_bt.add_theme_color_override('font_color', Color.BLACK)
+	cancel_bt.custom_minimum_size = Vector2(140, 50)
+	cancel_bt.pressed.connect(_on_cleanup_cancel)
+	var confirm_bt:Button = Button.new()
+	confirm_bt.text = '确认'
+	confirm_bt.add_theme_font_size_override('font_size', 24)
+	confirm_bt.add_theme_color_override('font_color', Color.BLACK)
+	confirm_bt.custom_minimum_size = Vector2(140, 50)
+	confirm_bt.pressed.connect(_on_cleanup_confirm)
+	hb.add_child(cancel_bt)
+	hb.add_child(confirm_bt)
+	vb.add_child(title_label)
+	vb.add_child(tip_label)
+	vb.add_child(days_input)
+	vb.add_child(hint_label)
+	vb.add_child(sep)
+	vb.add_child(hb)
+	panel.add_child(vb)
+	return panel
+
+func _on_cleanup_cancel() -> void:
+	if cleanup_overlay:
+		cleanup_overlay.call_deferred('set_visible', false)
+
+func _on_cleanup_confirm() -> void:
+	if cleanup_overlay:
+		cleanup_overlay.call_deferred('set_visible', false)
+		var days_input:LineEdit = cleanup_overlay.get_node('VBoxContainer/days_input')
+		var days:int = days_input.text.to_int()
+		if days <= 0:
+			days = UE_SAVE_TIME
+		cleanup__start_query_files(days)
 func _on_scan_dir_cb_toggled(idx:int, cb:CheckBox) -> void:
 	print('[connect_home]->_on_on_scan_dir_cb_toggled:%s, %s'%[idx, cb.name])
 	print(SCAN_DIR_DIC)
@@ -1861,6 +1971,131 @@ func _build_download_progress_overlay() -> PanelContainer:
 	panel.add_child(vb)
 	return panel
 
+func _create_spinner_texture() -> Texture2D:
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var center := Vector2(32, 32)
+	var r_in := 22.0
+	var r_out := 28.0
+	var col := Color(0.2, 0.4, 0.8, 1.0)
+	for y in range(64):
+		for x in range(64):
+			var d := Vector2(x + 0.5, y + 0.5) - center
+			var dist := d.length()
+			if dist >= r_in and dist <= r_out:
+				var ang := wrapf(rad_to_deg(d.angle()), 0, 360)
+				if ang <= 300.0:
+					img.set_pixel(x, y, col)
+	return ImageTexture.create_from_image(img)
+
+func _on_upload_detail_bt_pressed() -> void:
+	print('[connect_home]->_on_upload_detail_bt_pressed')
+	_show_upload_details_overlay()
+
+func _show_upload_details_overlay() -> void:
+	var wsize:Vector2 = Vector2(DisplayServer.window_get_size())
+	if upload_details_overlay == null:
+		upload_details_overlay = _build_upload_details_overlay()
+		add_child(upload_details_overlay)
+	_refresh_upload_details()
+	upload_details_overlay.reset_size()
+	var dsize:Vector2 = upload_details_overlay.size
+	if dsize.x <= 1 or dsize.y <= 1:
+		dsize = upload_details_overlay.custom_minimum_size
+	upload_details_overlay.position = Vector2((wsize.x - dsize.x) / 2.0, (wsize.y - dsize.y) / 2.0 - 60.0)
+	upload_details_overlay.size = dsize
+	upload_details_overlay.visible = true
+
+func _build_upload_details_overlay() -> PanelContainer:
+	var panel:PanelContainer = PanelContainer.new()
+	panel.name = 'upload_details_overlay'
+	panel.z_index = 120
+	panel.visible = false
+	var sb:StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = Color(0.95, 0.95, 0.95, 0.98)
+	sb.set_corner_radius_all(12)
+	sb.set_border_width_all(2)
+	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.content_margin_left = 20.0
+	sb.content_margin_right = 20.0
+	sb.content_margin_top = 16.0
+	sb.content_margin_bottom = 16.0
+	panel.add_theme_stylebox_override('panel', sb)
+	var vb:VBoxContainer = VBoxContainer.new()
+	vb.name = 'VBoxContainer'
+	vb.add_theme_constant_override('separation', 12)
+	var title_label:Label = Label.new()
+	title_label.text = '上传详情'
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_label.add_theme_font_size_override('font_size', 30)
+	title_label.add_theme_color_override('font_color', Color.BLACK)
+	var scroll:ScrollContainer = ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(620, 420)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	upload_details_list = VBoxContainer.new()
+	upload_details_list.name = 'upload_list'
+	upload_details_list.add_theme_constant_override('separation', 8)
+	upload_details_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(upload_details_list)
+	var close_bt:Button = Button.new()
+	close_bt.text = '关闭'
+	close_bt.add_theme_font_size_override('font_size', 24)
+	close_bt.add_theme_color_override('font_color', Color.BLACK)
+	close_bt.custom_minimum_size = Vector2(140, 50)
+	close_bt.pressed.connect(_on_upload_details_close)
+	var hb:HBoxContainer = HBoxContainer.new()
+	hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	hb.add_child(close_bt)
+	vb.add_child(title_label)
+	vb.add_child(scroll)
+	vb.add_child(hb)
+	panel.add_child(vb)
+	return panel
+
+func _on_upload_details_close() -> void:
+	if upload_details_overlay:
+		upload_details_overlay.call_deferred('set_visible', false)
+
+func _refresh_upload_details() -> void:
+	if upload_details_list == null:
+		return
+	for child in upload_details_list.get_children():
+		child.queue_free()
+	for filepath in upload_dic.get('dic', {}):
+		var fdic:Dictionary = upload_dic['dic'][filepath]
+		var row:HBoxContainer = HBoxContainer.new()
+		row.add_theme_constant_override('separation', 10)
+		var name_lb:Label = Label.new()
+		name_lb.text = filepath.get_file()
+		name_lb.add_theme_font_size_override('font_size', 20)
+		name_lb.add_theme_color_override('font_color', Color.BLACK)
+		name_lb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_lb.custom_minimum_size = Vector2(200, 0)
+		name_lb.clip_text = true
+		var st_lb:Label = Label.new()
+		st_lb.add_theme_font_size_override('font_size', 20)
+		st_lb.add_theme_color_override('font_color', Color.BLACK)
+		var rt:String = fdic.get('rt', '')
+		var process:int = fdic.get('process', 0)
+		var size:int = fdic.get('size', 0)
+		var pct:int = 0
+		if size > 0:
+			pct = int(100.0 * process / size)
+		match rt:
+			'notuploadyet':
+				st_lb.text = '待上传'
+			'uploading':
+				st_lb.text = '上传中 %d%%' % pct
+			'uploaded':
+				st_lb.text = '已完成'
+			'uploadfailed':
+				st_lb.text = '上传失败'
+			_:
+				st_lb.text = rt
+		row.add_child(name_lb)
+		row.add_child(st_lb)
+		upload_details_list.add_child(row)
+
 func update_files_table_after_upload() -> void:
 	#if update_files_aupload_thread:
 	#	update_files_aupload_thread.wait_to_finish()
@@ -2006,7 +2241,13 @@ func show_upload_process() -> void:
 		b += upload_dic['dic'][eachf]['process']
 		c += upload_dic['dic'][eachf]['size']
 	if c != 0:
-		show_main_log('%.1f%%'%[100.0 * b / c]) 
+		logs_show.call_deferred("set_text", '%s总体上传进度: %.1f%%'%[current_doing, 100.0 * b / c])
+	if upload_details_overlay:
+		_refresh_upload_details_deferred.call_deferred()
+
+func _refresh_upload_details_deferred() -> void:
+	if upload_details_overlay and upload_details_overlay.visible:
+		_refresh_upload_details()
 
 ############################################ function control begin #################################
 ## 1 ### init -> pull_files_table -> scan_files -> deal_files -> update_and_show_files
@@ -2108,6 +2349,9 @@ func upload__start_upload() -> void:
 	print('[connect_home]->upload__start_upload')
 	show_main_log('开始上传!')
 	show_sub_log()
+	if upload_detail_bt:
+		upload_detail_bt.rotation = 0
+		upload_detail_bt.visible = true
 	#if upload_thread:
 	#	upload_thread.wait_to_finish()
 	var _upload_thread = Thread.new()
@@ -2185,6 +2429,8 @@ func upload__receive_upload_finish(who_i_am:String, taskid:String, req_type:Stri
 		else:
 			print("[connect_home]->upload__receive_upload_finish:other message")
 		show_sub_log()
+		if upload_detail_bt and upload_dic.get('notuploadyet', 0) + upload_dic.get('uploading', 0) == 0:
+			upload_detail_bt.call_deferred('set_visible', false)
 	else:
 		print("[connect_home]->upload__receive_upload_finish:unknown message:%s, %s"%[req_type, result])
 
@@ -2226,6 +2472,77 @@ func upload__end_query_files_dic(who_i_am:String, taskid:String, req_type:String
 	else:
 		print("[connect_home]->upload__end_query_files_dic:error message:%s, %s"%[req_type, result])
 
+func cleanup__start_query_files(days:int) -> void:
+	print('[connect_home]->cleanup__start_query_files, days:%s'%days)
+	cleanup_days = days
+	show_main_log('正在查询服务器文件列表...')
+	var taskid:String = generate_task_id()
+	var _obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
+	task_dic[taskid] = _obj
+	_obj.connect("report_result", cleanup__end_query_files.bind(taskid, _obj))
+	var querydic:Dictionary = {}
+	var f = FileAccess.open(UE_ROOT_DIR.path_join('files.txt'), FileAccess.READ)
+	if f:
+		var db = JSON.parse_string(f.get_as_text())
+		f.close()
+		if db:
+			var all_files:Dictionary = db.get('all_files_dic', {})
+			for eachf in all_files:
+				if all_files[eachf].get('on_ue', 'no') != 'yes':
+					continue
+				if not FileAccess.file_exists(eachf):
+					continue
+				var filename:String = eachf
+				if UE_ROOT_DIR + '/' in eachf:
+					filename = eachf.replace(UE_ROOT_DIR + '/', '')
+				elif UE_ROOT_DIR in eachf:
+					filename = eachf.replace(UE_ROOT_DIR, '')
+				querydic[filename] = FileAccess.get_md5(eachf)
+	_obj.query_files(querydic)
+
+func cleanup__end_query_files(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
+	print("[connect_home]->cleanup__end_query_files:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
+	if who_i_am == 'tcp_transf_class' and req_type == 'query' and taskid == _taskid:
+		if result == 'FINISH':
+			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
+			var need_upload_list:Array = []
+			if infor != 'all ok':
+				need_upload_list = infor.split(';')
+			var deletable_list:Array = []
+			var now_time:int = Time.get_unix_time_from_system()
+			var f = FileAccess.open(UE_ROOT_DIR.path_join('files.txt'), FileAccess.READ)
+			if f:
+				var db = JSON.parse_string(f.get_as_text())
+				f.close()
+				if db:
+					var all_files:Dictionary = db.get('all_files_dic', {})
+					for eachf in all_files:
+						if all_files[eachf].get('on_ue', 'no') != 'yes':
+							continue
+						var filename:String = eachf
+						if UE_ROOT_DIR + '/' in eachf:
+							filename = eachf.replace(UE_ROOT_DIR + '/', '')
+						elif UE_ROOT_DIR in eachf:
+							filename = eachf.replace(UE_ROOT_DIR, '')
+						if filename in need_upload_list:
+							continue
+						var modtime:int = all_files[eachf].get('modtime', now_time)
+						if now_time - modtime > cleanup_days * 86400:
+							deletable_list.append(eachf)
+			print('[connect_home]->cleanup__end_query_files: 可删除文件(服务器已有, %s天前): %s个'%[cleanup_days, deletable_list.size()])
+			for eachf in deletable_list:
+				print('[connect_home]->cleanup__end_query_files: 可删除: %s'%eachf)
+			show_main_log('可删除:%s个文件, 已打印'%deletable_list.size())
+		elif result == 'FAILED':
+			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
+			show_main_log('查询服务器文件列表失败!')
+			print("[connect_home]->cleanup__end_query_files:failed!!!!!!!!!!!")
+		else:
+			print("[connect_home]->cleanup__end_query_files:error result:%s, %s"%[req_type, result])
+		show_sub_log()
+	else:
+		print("[connect_home]->cleanup__end_query_files:error message:%s, %s"%[req_type, result])
+
 func upload__update_files_table_after_upload() -> void:
 	print("[connect_home]->upload__update_files_table_after_upload start")
 	var taskid:String = generate_task_id()
@@ -2263,13 +2580,14 @@ func upload__start_push_files_table() -> void:
 	_obj.connect("report_result", upload__end_push_files_table.bind(taskid, _obj))
 	var push_file = UE_ROOT_DIR.path_join('files.txt')
 	_obj.upload_a_file(push_file)
+	show_main_log('上传完成!同步数据状态，请勿关闭!')
 	
 func upload__end_push_files_table(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
 	print("[connect_home]->upload__end_push_files_table:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
 	if who_i_am == 'tcp_transf_class' and req_type == 'upload' and taskid == _taskid:
 		if result == 'FINISH':
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
-			show_main_log('上传完成!')
+			show_main_log('上传完成!数据状态同步完成!')
 			update_and_show_files()
 		elif result == 'FAILED':
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
@@ -2520,6 +2838,8 @@ func _end_pressed() -> void:
 			go_previous_page()
 		
 func _process(_del)	-> void:
+	if upload_detail_bt and upload_detail_bt.visible:
+		upload_detail_bt.rotation += _del * 5.0
 	for taskid in clear_dic:
 		if Time.get_ticks_msec() - clear_dic[taskid]['time'] > 1000 * 1:
 			if clear_dic[taskid]['obj'] != null:
