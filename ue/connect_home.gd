@@ -914,7 +914,7 @@ func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 			var texture_on_server:TextureRect = TextureRect.new()
 			texture_on_server.name = 'texture_on_server'
 			texture_on_server.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			texture_on_server.custom_minimum_size = Vector2i(16, 16)
+			texture_on_server.custom_minimum_size = Vector2i(32, 32)
 			texture_on_server.position = Vector2i(s - 30, 10)
 			texture_on_server.texture = load("res://db/on_server.png")
 			texture_rec.add_child(texture_on_server)
@@ -922,7 +922,7 @@ func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 			var texture_on_ue:TextureRect = TextureRect.new()
 			texture_on_ue.name = 'texture_on_ue'
 			texture_on_ue.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			texture_on_ue.custom_minimum_size = Vector2i(16, 16)
+			texture_on_ue.custom_minimum_size = Vector2i(32, 32)
 			texture_on_ue.position = Vector2i(s - 30, s - 30)
 			texture_on_ue.texture = load("res://db/on_ue.png")
 			texture_rec.add_child(texture_on_ue)
@@ -930,7 +930,7 @@ func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 			var texture_on_ue_status:TextureRect = TextureRect.new()
 			texture_on_ue_status.name = 'texture_on_ue_status'
 			texture_on_ue_status.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			texture_on_ue_status.custom_minimum_size = Vector2i(16, 16)
+			texture_on_ue_status.custom_minimum_size = Vector2i(32, 32)
 			texture_on_ue_status.position = Vector2i(10, s - 30)
 			if on_server_status == 'damaged':
 				texture_on_ue_status.texture = load("res://db/file_damaged.png")
@@ -2116,6 +2116,7 @@ func update_files_table_after_upload_thread() -> void:
 			continue
 		if eachfile in f_table:
 			f_table[eachfile]['on_server'] = 'yes'
+			f_table[eachfile]['status'] = 'normal'
 	_obj.write_db({'all_files_dic': f_table, 'rename_files_dic': d_table})
 	_obj._destory()
 	print("[connect_home]->update_files_table_after_upload_thread finish")
@@ -2325,7 +2326,8 @@ func scan__start_deal_files() -> void:
 	for eachpath in all_files_dic:
 		var on_server = all_files_dic[eachpath]['on_server']
 		var on_ue = all_files_dic[eachpath]['on_ue']
-		if on_server == 'no' and on_ue == 'yes':#need upload
+		var on_status:String = all_files_dic[eachpath].get('status', 'normal')
+		if on_ue == 'yes' and (on_server == 'no' or on_status in ['lost', 'damaged']):#need upload
 			if eachpath not in upload_dic['dic']:
 				upload_dic['dic'][eachpath] = {}
 			upload_dic['dic'][eachpath]['rt'] = 'notuploadyet'
