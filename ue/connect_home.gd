@@ -2090,6 +2090,7 @@ func _refresh_upload_details() -> void:
 				st_lb.text = '已完成'
 			'uploadfailed':
 				st_lb.text = '上传失败'
+				st_lb.add_theme_color_override('font_color', Color.RED)
 			_:
 				st_lb.text = rt
 		row.add_child(name_lb)
@@ -2558,6 +2559,7 @@ func upload__update_files_table_after_upload() -> void:
 			continue
 		if eachfile in f_table:
 			f_table[eachfile]['on_server'] = 'yes'
+			f_table[eachfile]['status'] = 'normal'
 	scan_file_rt = {}
 	scan_file_rt.all = 0
 	scan_file_rt.add = 0
