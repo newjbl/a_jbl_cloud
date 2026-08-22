@@ -131,6 +131,7 @@ var texture_touch_dic:Dictionary = {}
 
 var comtimer:Timer = null 
 var log_window = null
+var ue_logger = null
 var debug_on_win:bool = false
 var task_dic:Dictionary = {}
 var thread_list:Array = []
@@ -183,6 +184,9 @@ func _ready() -> void:
 	
 	load_cfg()
 	load_setting()
+	ue_logger = preload("res://class/ue_logger.gd").new()
+	ue_logger.set_log_file(UE_ROOT_DIR.path_join('UE.log'))
+	OS.add_logger(ue_logger)
 	print("%s, %s, %s, %s" % [UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, DOWNLOAD_PORT])
 	build_gui()
 	update_and_show_files()
@@ -1436,6 +1440,8 @@ func _on_add_type_bt_pressed(opr:String, add_type_input:LineEdit, hbox_setting_l
 
 func _on_ue_root_dir_changed(t:String) -> void:
 	UE_ROOT_DIR = t
+	if ue_logger:
+		ue_logger.set_log_file(UE_ROOT_DIR.path_join('UE.log'))
 	print(UE_ROOT_DIR)
 
 func _on_ue_save_time_changed(t:String) -> void:
@@ -2459,7 +2465,7 @@ func scan__start_scan() -> void:
 	scan_logs = []
 	scan_phase = '开始扫描'
 	scan_progress_cnt = 0
-	last_scan_progress_ui_update = 0
+	last_scan_progress_ui_update = -5000
 	if scan_detail_bt:
 		scan_detail_bt.rotation = 0
 		scan_detail_bt.visible = true
@@ -2548,6 +2554,7 @@ func scan__receive_scan_progress(who_i_am:String, taskid:String, infor:String, _
 		return
 	last_scan_progress_ui_update = now
 	scan_phase = '扫描文件中，已扫描:%s个文件' % scan_progress_cnt
+	logs_show.call_deferred('set_text', '%s扫描进度: 已扫描%s个文件' % [current_doing, scan_progress_cnt])
 	logs_show_scan.call_deferred('set_text', '扫描进度: %s个文件' % scan_progress_cnt)
 	_refresh_scan_details_deferred.call_deferred()
 
