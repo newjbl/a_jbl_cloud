@@ -109,6 +109,9 @@ var cleanup_overlay:PanelContainer = null
 var cleanup_days:int = 30
 var upload_batch_overlay:PanelContainer = null
 var upload_batch_limit_input:LineEdit = null
+var scan_dir_select_overlay:PanelContainer = null
+var scan_dir_select_box:VBoxContainer = null
+var scan_dir_selected:Dictionary = {}
 var upload_detail_bt:Button = null
 var upload_details_overlay:PanelContainer = null
 var upload_details_list:VBoxContainer = null
@@ -1264,7 +1267,7 @@ func _force_win() -> void:
 ### init -> pull_files_table -> scan_files -> deal_files -> update_and_show_files
 func _on_scan_bt_pressed() -> void:
 	print('[connect_home]->_on_scan_bt_pressed')
-	scan__start_scan()
+	_show_scan_dir_select_dialog()
 
 ### upload_files -> push_files_table -> update_and_show_files
 func _on_upload_bt_pressed() -> void:
@@ -1491,6 +1494,153 @@ func _trim_upload_dic(limit:int) -> void:
 	upload_dic['dic'] = keep
 	upload_dic['notuploadyet'] = limit
 	print('[connect_home]->_trim_upload_dic: 保留最近 %s 条, 其余 %s 条本次不传'%[limit, dic.size() - limit])
+
+func _show_scan_dir_select_dialog() -> void:
+	var wsize:Vector2 = Vector2(DisplayServer.window_get_size())
+	if scan_dir_select_overlay == null:
+		scan_dir_select_overlay = _build_scan_dir_select_overlay()
+		add_child(scan_dir_select_overlay)
+	for child in scan_dir_select_box.get_children():
+		child.queue_free()
+	var dir_list:Array = []
+	for eachdir in SCAN_DIR_DIC:
+		if SCAN_DIR_DIC[eachdir] == 'yes':
+			dir_list.append(eachdir)
+	for eachdir in dir_list:
+		var cb:CheckBox = CheckBox.new()
+		cb.name = 'cb_%s'%eachdir
+		cb.text = eachdir
+		cb.button_pressed = true
+		cb.add_theme_font_size_override('font_size', 22)
+		cb.add_theme_color_override('font_color', Color.BLACK)
+		cb.add_theme_color_override('font_hover_color', Color.BLACK)
+		cb.add_theme_color_override('font_pressed_color', Color.BLACK)
+		cb.add_theme_color_override('font_focus_color', Color.BLACK)
+		scan_dir_select_box.add_child(cb)
+	scan_dir_select_overlay.get_node('VBoxContainer/dir_count_label').text = '可扫描目录(%s个):'%dir_list.size()
+	scan_dir_select_overlay.reset_size()
+	var dsize:Vector2 = scan_dir_select_overlay.size
+	if dsize.x <= 1 or dsize.y <= 1:
+		dsize = scan_dir_select_overlay.custom_minimum_size
+	scan_dir_select_overlay.position = Vector2((wsize.x - dsize.x) / 2.0, (wsize.y - dsize.y) / 2.0 - 60.0)
+	scan_dir_select_overlay.size = dsize
+	scan_dir_select_overlay.visible = true
+
+func _build_scan_dir_select_overlay() -> PanelContainer:
+	var panel:PanelContainer = PanelContainer.new()
+	panel.name = 'scan_dir_select_overlay'
+	panel.z_index = 120
+	panel.visible = false
+	var sb:StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = Color(0.95, 0.95, 0.95, 0.98)
+	sb.set_corner_radius_all(12)
+	sb.set_border_width_all(2)
+	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.content_margin_left = 20.0
+	sb.content_margin_right = 20.0
+	sb.content_margin_top = 16.0
+	sb.content_margin_bottom = 16.0
+	panel.add_theme_stylebox_override('panel', sb)
+	var vb:VBoxContainer = VBoxContainer.new()
+	vb.name = 'VBoxContainer'
+	vb.add_theme_constant_override('separation', 12)
+	var title_label:Label = Label.new()
+	title_label.text = '选择扫描目录'
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_label.add_theme_font_size_override('font_size', 30)
+	title_label.add_theme_color_override('font_color', Color.BLACK)
+	var dir_count_label:Label = Label.new()
+	dir_count_label.name = 'dir_count_label'
+	dir_count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	dir_count_label.add_theme_font_size_override('font_size', 22)
+	dir_count_label.add_theme_color_override('font_color', Color.BLACK)
+	var scroll:ScrollContainer = ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(420, 220)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scan_dir_select_box = VBoxContainer.new()
+	scan_dir_select_box.name = 'dir_list'
+	scan_dir_select_box.add_theme_constant_override('separation', 8)
+	scan_dir_select_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(scan_dir_select_box)
+	var sep:HSeparator = HSeparator.new()
+	var hb:HBoxContainer = HBoxContainer.new()
+	hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	hb.add_theme_constant_override('separation', 20)
+	var select_all_bt:Button = Button.new()
+	select_all_bt.text = '全选'
+	select_all_bt.add_theme_font_size_override('font_size', 22)
+	select_all_bt.add_theme_color_override('font_color', Color.BLACK)
+	select_all_bt.add_theme_color_override('font_hover_color', Color.BLACK)
+	select_all_bt.add_theme_color_override('font_pressed_color', Color.BLACK)
+	select_all_bt.custom_minimum_size = Vector2(100, 50)
+	select_all_bt.pressed.connect(_on_scan_dir_select_all)
+	var select_none_bt:Button = Button.new()
+	select_none_bt.text = '全否'
+	select_none_bt.add_theme_font_size_override('font_size', 22)
+	select_none_bt.add_theme_color_override('font_color', Color.BLACK)
+	select_none_bt.add_theme_color_override('font_hover_color', Color.BLACK)
+	select_none_bt.add_theme_color_override('font_pressed_color', Color.BLACK)
+	select_none_bt.custom_minimum_size = Vector2(100, 50)
+	select_none_bt.pressed.connect(_on_scan_dir_select_none)
+	var cancel_bt:Button = Button.new()
+	cancel_bt.text = '取消'
+	cancel_bt.add_theme_font_size_override('font_size', 22)
+	cancel_bt.add_theme_color_override('font_color', Color.BLACK)
+	cancel_bt.add_theme_color_override('font_hover_color', Color.BLACK)
+	cancel_bt.add_theme_color_override('font_pressed_color', Color.BLACK)
+	cancel_bt.custom_minimum_size = Vector2(100, 50)
+	cancel_bt.pressed.connect(_on_scan_dir_select_cancel)
+	var confirm_bt:Button = Button.new()
+	confirm_bt.text = '开始扫描'
+	confirm_bt.add_theme_font_size_override('font_size', 22)
+	confirm_bt.add_theme_color_override('font_color', Color.BLACK)
+	confirm_bt.add_theme_color_override('font_hover_color', Color.BLACK)
+	confirm_bt.add_theme_color_override('font_pressed_color', Color.BLACK)
+	confirm_bt.custom_minimum_size = Vector2(100, 50)
+	confirm_bt.pressed.connect(_on_scan_dir_select_confirm)
+	hb.add_child(select_all_bt)
+	hb.add_child(select_none_bt)
+	hb.add_child(cancel_bt)
+	hb.add_child(confirm_bt)
+	vb.add_child(title_label)
+	vb.add_child(dir_count_label)
+	vb.add_child(scroll)
+	vb.add_child(sep)
+	vb.add_child(hb)
+	panel.add_child(vb)
+	return panel
+
+func _on_scan_dir_select_all() -> void:
+	for child in scan_dir_select_box.get_children():
+		if child is CheckBox:
+			child.button_pressed = true
+
+func _on_scan_dir_select_none() -> void:
+	for child in scan_dir_select_box.get_children():
+		if child is CheckBox:
+			child.button_pressed = false
+
+func _on_scan_dir_select_cancel() -> void:
+	if scan_dir_select_overlay:
+		scan_dir_select_overlay.call_deferred('set_visible', false)
+
+func _on_scan_dir_select_confirm() -> void:
+	scan_dir_selected = {}
+	for child in scan_dir_select_box.get_children():
+		if child is CheckBox and child.button_pressed:
+			scan_dir_selected[child.name.trim_prefix('cb_')] = 'yes'
+	if scan_dir_selected.size() <= 0:
+		show_main_log('请至少选择一个扫描目录!')
+		return
+	if scan_dir_select_overlay:
+		scan_dir_select_overlay.call_deferred('set_visible', false)
+	print('[connect_home]->_on_scan_dir_select_confirm: 本次扫描目录:%s'%scan_dir_selected.keys())
+	scan__start_scan()
+
+func _get_scan_dir_dic() -> Dictionary:
+	if scan_dir_selected.size() > 0:
+		return scan_dir_selected
+	return SCAN_DIR_DIC
 
 func _on_scan_dir_cb_toggled(idx:int, cb:CheckBox) -> void:
 	print('[connect_home]->_on_on_scan_dir_cb_toggled:%s, %s'%[idx, cb.name])
@@ -2637,7 +2787,7 @@ func scan__start_scan_files() -> void:
 	scan_phase = '扫描文件中'
 	_refresh_scan_details_deferred.call_deferred()
 	var taskid:String = generate_task_id()
-	var _obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
+	var _obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, _get_scan_dir_dic(), 
 	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
 	task_dic[taskid] = _obj
 	_obj.connect("scan_finished", scan__end_scan_files.bind(taskid, _obj))
@@ -2685,7 +2835,7 @@ func scan__start_deal_files() -> void:
 	show_main_log('整理文件!')
 	_refresh_scan_details_deferred.call_deferred()
 	var taskid:String = generate_task_id()
-	var _obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
+	var _obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, _get_scan_dir_dic(), 
 	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
 	task_dic[taskid] = _obj
 	var files_dic:Dictionary = _obj.read_db()
