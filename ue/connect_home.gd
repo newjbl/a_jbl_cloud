@@ -107,6 +107,8 @@ var download_progress_bar:ProgressBar = null
 var download_progress_label:Label = null
 var cleanup_overlay:PanelContainer = null
 var cleanup_days:int = 30
+var upload_batch_overlay:PanelContainer = null
+var upload_batch_limit_input:LineEdit = null
 var upload_detail_bt:Button = null
 var upload_details_overlay:PanelContainer = null
 var upload_details_list:VBoxContainer = null
@@ -1268,7 +1270,7 @@ func _on_scan_bt_pressed() -> void:
 func _on_upload_bt_pressed() -> void:
 	print('[connect_home]->_on_upload_bt_pressed')
 	if upload_dic.get('notuploadyet', 0) > 0:
-		upload__start_upload()
+		_show_upload_batch_dialog()
 	else:
 		print('[connect_home]->_on_upload_bt_pressed:no need upload')
 		show_main_log('无需上传!')
@@ -1371,6 +1373,125 @@ func _on_cleanup_confirm() -> void:
 		if days <= 0:
 			days = UE_SAVE_TIME
 		cleanup__start_query_files(days)
+
+func _show_upload_batch_dialog() -> void:
+	var wsize:Vector2 = Vector2(DisplayServer.window_get_size())
+	if upload_batch_overlay == null:
+		upload_batch_overlay = _build_upload_batch_overlay()
+		add_child(upload_batch_overlay)
+	var total:int = upload_dic.get('notuploadyet', 0)
+	upload_batch_overlay.get_node('VBoxContainer/total_label').text = '当前待上传: %s 个文件'%total
+	upload_batch_limit_input.text = '%s'%total
+	upload_batch_overlay.reset_size()
+	var dsize:Vector2 = upload_batch_overlay.size
+	if dsize.x <= 1 or dsize.y <= 1:
+		dsize = upload_batch_overlay.custom_minimum_size
+	upload_batch_overlay.position = Vector2((wsize.x - dsize.x) / 2.0, (wsize.y - dsize.y) / 2.0 - 60.0)
+	upload_batch_overlay.size = dsize
+	upload_batch_overlay.visible = true
+
+func _build_upload_batch_overlay() -> PanelContainer:
+	var panel:PanelContainer = PanelContainer.new()
+	panel.name = 'upload_batch_overlay'
+	panel.z_index = 120
+	panel.visible = false
+	var sb:StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = Color(0.95, 0.95, 0.95, 0.98)
+	sb.set_corner_radius_all(12)
+	sb.set_border_width_all(2)
+	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.content_margin_left = 20.0
+	sb.content_margin_right = 20.0
+	sb.content_margin_top = 16.0
+	sb.content_margin_bottom = 16.0
+	panel.add_theme_stylebox_override('panel', sb)
+	var vb:VBoxContainer = VBoxContainer.new()
+	vb.name = 'VBoxContainer'
+	vb.add_theme_constant_override('separation', 12)
+	var title_label:Label = Label.new()
+	title_label.text = '分批上传'
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_label.add_theme_font_size_override('font_size', 30)
+	title_label.add_theme_color_override('font_color', Color.BLACK)
+	var total_label:Label = Label.new()
+	total_label.name = 'total_label'
+	total_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	total_label.add_theme_font_size_override('font_size', 22)
+	total_label.add_theme_color_override('font_color', Color.BLACK)
+	var tip_label:Label = Label.new()
+	tip_label.text = '上传最新的多少条文件?'
+	tip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tip_label.add_theme_font_size_override('font_size', 22)
+	tip_label.add_theme_color_override('font_color', Color.BLACK)
+	upload_batch_limit_input = LineEdit.new()
+	upload_batch_limit_input.name = 'count_input'
+	upload_batch_limit_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	upload_batch_limit_input.add_theme_font_size_override('font_size', 26)
+	upload_batch_limit_input.add_theme_color_override('font_color', Color.BLACK)
+	upload_batch_limit_input.custom_minimum_size = Vector2(200, 60)
+	var hint_label:Label = Label.new()
+	hint_label.text = '按文件修改时间取最新的N条; 留空或大于总数则全部上传'
+	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint_label.add_theme_font_size_override('font_size', 16)
+	hint_label.add_theme_color_override('font_color', Color(0.3, 0.3, 0.3, 1.0))
+	var sep:HSeparator = HSeparator.new()
+	var hb:HBoxContainer = HBoxContainer.new()
+	hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	hb.add_theme_constant_override('separation', 30)
+	var cancel_bt:Button = Button.new()
+	cancel_bt.text = '取消'
+	cancel_bt.add_theme_font_size_override('font_size', 24)
+	cancel_bt.add_theme_color_override('font_color', Color.BLACK)
+	cancel_bt.custom_minimum_size = Vector2(140, 50)
+	cancel_bt.pressed.connect(_on_upload_batch_cancel)
+	var confirm_bt:Button = Button.new()
+	confirm_bt.text = '确认上传'
+	confirm_bt.add_theme_font_size_override('font_size', 24)
+	confirm_bt.add_theme_color_override('font_color', Color.BLACK)
+	confirm_bt.custom_minimum_size = Vector2(140, 50)
+	confirm_bt.pressed.connect(_on_upload_batch_confirm)
+	hb.add_child(cancel_bt)
+	hb.add_child(confirm_bt)
+	vb.add_child(title_label)
+	vb.add_child(total_label)
+	vb.add_child(tip_label)
+	vb.add_child(upload_batch_limit_input)
+	vb.add_child(hint_label)
+	vb.add_child(sep)
+	vb.add_child(hb)
+	panel.add_child(vb)
+	return panel
+
+func _on_upload_batch_cancel() -> void:
+	if upload_batch_overlay:
+		upload_batch_overlay.call_deferred('set_visible', false)
+
+func _on_upload_batch_confirm() -> void:
+	if upload_batch_overlay:
+		upload_batch_overlay.call_deferred('set_visible', false)
+	var limit:int = upload_batch_limit_input.text.to_int()
+	if limit > 0:
+		_trim_upload_dic(limit)
+	upload__start_upload()
+
+func _trim_upload_dic(limit:int) -> void:
+	var dic:Dictionary = upload_dic.get('dic', {})
+	if dic.size() <= limit:
+		return
+	var paths:Array = dic.keys()
+	paths.sort_custom(func(a, b):
+		return dic[a].get('modtime', 0) > dic[b].get('modtime', 0))
+	var keep:Dictionary = {}
+	var cnt:int = 0
+	for p in paths:
+		keep[p] = dic[p]
+		cnt += 1
+		if cnt >= limit:
+			break
+	upload_dic['dic'] = keep
+	upload_dic['notuploadyet'] = limit
+	print('[connect_home]->_trim_upload_dic: 保留最近 %s 条, 其余 %s 条本次不传'%[limit, dic.size() - limit])
+
 func _on_scan_dir_cb_toggled(idx:int, cb:CheckBox) -> void:
 	print('[connect_home]->_on_on_scan_dir_cb_toggled:%s, %s'%[idx, cb.name])
 	print(SCAN_DIR_DIC)
@@ -2580,6 +2701,7 @@ func scan__start_deal_files() -> void:
 			upload_dic['dic'][eachpath]['rt'] = 'notuploadyet'
 			upload_dic['dic'][eachpath]['process'] = 0
 			upload_dic['dic'][eachpath]['size'] = 0
+			upload_dic['dic'][eachpath]['modtime'] = all_files_dic[eachpath].get('modtime', 0)
 			upload_dic['notuploadyet'] += 1
 		elif on_ue == 'yes' and on_server == 'yes':#need check if need delete on UE
 			if if_need_delete_ue_file(all_files_dic[eachpath], 7):
