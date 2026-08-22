@@ -110,6 +110,13 @@ var cleanup_days:int = 30
 var upload_detail_bt:Button = null
 var upload_details_overlay:PanelContainer = null
 var upload_details_list:VBoxContainer = null
+var scan_detail_bt:Button = null
+var scan_details_overlay:PanelContainer = null
+var scan_details_list:VBoxContainer = null
+var scan_phase_label:Label = null
+var scan_stat_label:Label = null
+var scan_phase:String = ''
+var scan_logs:Array = []
 
 ## touch control
 var drag_threshold: float = 50.0
@@ -228,6 +235,17 @@ func build_gui() -> void:
 	upload_detail_bt.tooltip_text = '查看上传详情'
 	upload_detail_bt.pressed.connect(_on_upload_detail_bt_pressed)
 	hbox_l0_1.add_child(upload_detail_bt)
+	scan_detail_bt = Button.new()
+	scan_detail_bt.name = 'scan_detail_bt'
+	scan_detail_bt.flat = true
+	scan_detail_bt.icon = _create_triangle_texture()
+	scan_detail_bt.expand_icon = true
+	scan_detail_bt.custom_minimum_size = Vector2(40, 40)
+	scan_detail_bt.pivot_offset = Vector2(20, 20)
+	scan_detail_bt.visible = false
+	scan_detail_bt.tooltip_text = '查看扫描详情'
+	scan_detail_bt.pressed.connect(_on_scan_detail_bt_pressed)
+	hbox_l0_1.add_child(scan_detail_bt)
 	
 	var hbox_l0_2:HBoxContainer = HBoxContainer.new()
 	hbox_l0_2.name = 'logs_show_details'
@@ -1988,6 +2006,33 @@ func _create_spinner_texture() -> Texture2D:
 					img.set_pixel(x, y, col)
 	return ImageTexture.create_from_image(img)
 
+func _create_triangle_texture() -> Texture2D:
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var p1 := Vector2(20, 14)
+	var p2 := Vector2(20, 50)
+	var p3 := Vector2(50, 32)
+	var col := Color(0.2, 0.4, 0.8, 1.0)
+	for y in range(64):
+		for x in range(64):
+			if _point_in_triangle(Vector2(x + 0.5, y + 0.5), p1, p2, p3):
+				img.set_pixel(x, y, col)
+	return ImageTexture.create_from_image(img)
+
+func _point_in_triangle(p:Vector2, a:Vector2, b:Vector2, c:Vector2) -> bool:
+	var v0:Vector2 = c - a
+	var v1:Vector2 = b - a
+	var v2:Vector2 = p - a
+	var dot00:float = v0.dot(v0)
+	var dot01:float = v0.dot(v1)
+	var dot02:float = v0.dot(v2)
+	var dot11:float = v1.dot(v1)
+	var dot12:float = v1.dot(v2)
+	var inv:float = 1.0 / (dot00 * dot11 - dot01 * dot01)
+	var u:float = (dot11 * dot02 - dot01 * dot12) * inv
+	var v:float = (dot00 * dot12 - dot01 * dot02) * inv
+	return (u >= 0.0) and (v >= 0.0) and (u + v <= 1.0)
+
 func _on_upload_detail_bt_pressed() -> void:
 	print('[connect_home]->_on_upload_detail_bt_pressed')
 	_show_upload_details_overlay()
@@ -2228,6 +2273,7 @@ func show_sub_log() -> void:
 		upload_dic.get('uploaded', 0) + upload_dic.get('uploadfailed', 0) > 0:
 		logs_show_upload.call_deferred("set_text", "%s"%['待上传:%s, 上传中:%s, 上传成功:%s, 上传失败:%s'%[
 			upload_dic.notuploadyet, upload_dic.uploading, upload_dic.uploaded, upload_dic.uploadfailed]])
+	_refresh_scan_details_deferred.call_deferred()
 	#logs_show_delete.call_deferred("set_text", "%s"%[logs_dic.delete_rt])
 
 func show_main_log(msg:String) -> void:
@@ -2235,6 +2281,11 @@ func show_main_log(msg:String) -> void:
 	if len(t) > 70:
 		t = t.substr(len(t) - 70)
 	logs_show.call_deferred("set_text", current_doing + t)
+	if current_doing == '【扫描】:':
+		scan_logs.append(msg)
+		if len(scan_logs) > 100:
+			scan_logs.pop_front()
+		_refresh_scan_details_deferred.call_deferred()
 	
 func show_upload_process() -> void:
 	var b:int = 0
@@ -2251,6 +2302,113 @@ func _refresh_upload_details_deferred() -> void:
 	if upload_details_overlay and upload_details_overlay.visible:
 		_refresh_upload_details()
 
+func _on_scan_detail_bt_pressed() -> void:
+	print('[connect_home]->_on_scan_detail_bt_pressed')
+	_show_scan_details_overlay()
+
+func _show_scan_details_overlay() -> void:
+	var wsize:Vector2 = Vector2(DisplayServer.window_get_size())
+	if scan_details_overlay == null:
+		scan_details_overlay = _build_scan_details_overlay()
+		add_child(scan_details_overlay)
+	_refresh_scan_details()
+	scan_details_overlay.reset_size()
+	var dsize:Vector2 = scan_details_overlay.size
+	if dsize.x <= 1 or dsize.y <= 1:
+		dsize = scan_details_overlay.custom_minimum_size
+	scan_details_overlay.position = Vector2((wsize.x - dsize.x) / 2.0, (wsize.y - dsize.y) / 2.0 - 60.0)
+	scan_details_overlay.size = dsize
+	scan_details_overlay.visible = true
+
+func _build_scan_details_overlay() -> PanelContainer:
+	var panel:PanelContainer = PanelContainer.new()
+	panel.name = 'scan_details_overlay'
+	panel.z_index = 120
+	panel.visible = false
+	var sb:StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = Color(0.95, 0.95, 0.95, 0.98)
+	sb.set_corner_radius_all(12)
+	sb.set_border_width_all(2)
+	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.content_margin_left = 20.0
+	sb.content_margin_right = 20.0
+	sb.content_margin_top = 16.0
+	sb.content_margin_bottom = 16.0
+	panel.add_theme_stylebox_override('panel', sb)
+	var vb:VBoxContainer = VBoxContainer.new()
+	vb.name = 'VBoxContainer'
+	vb.add_theme_constant_override('separation', 12)
+	var title_label:Label = Label.new()
+	title_label.text = '扫描详情'
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_label.add_theme_font_size_override('font_size', 30)
+	title_label.add_theme_color_override('font_color', Color.BLACK)
+	scan_phase_label = Label.new()
+	scan_phase_label.name = 'phase_label'
+	scan_phase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	scan_phase_label.add_theme_font_size_override('font_size', 22)
+	scan_phase_label.add_theme_color_override('font_color', Color(0.0, 0.0, 0.6, 1.0))
+	scan_stat_label = Label.new()
+	scan_stat_label.name = 'stat_label'
+	scan_stat_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	scan_stat_label.add_theme_font_size_override('font_size', 20)
+	scan_stat_label.add_theme_color_override('font_color', Color.BLACK)
+	var scroll:ScrollContainer = ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(620, 400)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scan_details_list = VBoxContainer.new()
+	scan_details_list.name = 'scan_log_list'
+	scan_details_list.add_theme_constant_override('separation', 6)
+	scan_details_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(scan_details_list)
+	var close_bt:Button = Button.new()
+	close_bt.text = '关闭'
+	close_bt.add_theme_font_size_override('font_size', 24)
+	close_bt.add_theme_color_override('font_color', Color.BLACK)
+	close_bt.custom_minimum_size = Vector2(140, 50)
+	close_bt.pressed.connect(_on_scan_details_close)
+	var hb:HBoxContainer = HBoxContainer.new()
+	hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	hb.add_child(close_bt)
+	vb.add_child(title_label)
+	vb.add_child(scan_phase_label)
+	vb.add_child(scan_stat_label)
+	vb.add_child(scroll)
+	vb.add_child(hb)
+	panel.add_child(vb)
+	return panel
+
+func _on_scan_details_close() -> void:
+	if scan_details_overlay:
+		scan_details_overlay.call_deferred('set_visible', false)
+
+func _refresh_scan_details() -> void:
+	if scan_details_overlay == null or scan_details_list == null:
+		return
+	scan_phase_label.text = '当前阶段: %s' % scan_phase
+	var stat:String = ''
+	if 'add' in scan_file_rt:
+		stat = '文件总数:%s  新增:%s  修改:%s  可删除:%s'%[
+			scan_file_rt.get('all', 0), scan_file_rt.add, scan_file_rt.mod, scan_file_rt.del]
+	scan_stat_label.text = stat
+	for child in scan_details_list.get_children():
+		child.queue_free()
+	for msg in scan_logs:
+		var row:Label = Label.new()
+		row.text = msg
+		row.add_theme_font_size_override('font_size', 18)
+		row.add_theme_color_override('font_color', Color.BLACK)
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		scan_details_list.add_child(row)
+
+func _refresh_scan_details_deferred() -> void:
+	if scan_details_overlay and scan_details_overlay.visible:
+		_refresh_scan_details()
+
+func _hide_scan_detail_bt() -> void:
+	if scan_detail_bt:
+		scan_detail_bt.visible = false
+
 ############################################ function control begin #################################
 ## 1 ### init -> pull_files_table -> scan_files -> deal_files -> update_and_show_files
 func scan__start_scan() -> void:
@@ -2259,11 +2417,19 @@ func scan__start_scan() -> void:
 	show_main_log('开始扫描!')
 	scan_file_rt = {}
 	upload_dic = {'notuploadyet':0, 'uploading': 0, 'uploaded':0, 'uploadfailed':0, 'dic':{}}
+	scan_logs = []
+	scan_phase = '开始扫描'
+	if scan_detail_bt:
+		scan_detail_bt.rotation = 0
+		scan_detail_bt.visible = true
+	_refresh_scan_details_deferred.call_deferred()
 	scan__start_pull_files_table()
 
 func scan__start_pull_files_table() -> void:
 	print('[connect_home]->scan__start_pull_files_table')
 	show_main_log('拉取文件列表')
+	scan_phase = '拉取文件列表'
+	_refresh_scan_details_deferred.call_deferred()
 	var taskid:String = generate_task_id()
 	var _obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'yes')
 	task_dic[taskid] = _obj
@@ -2277,10 +2443,15 @@ func scan__end_pull_files_table(who_i_am:String, taskid:String, req_type:String,
 		if result in ['FINISH', 'ERROR7']:
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			show_main_log('拉取完成')
+			scan_phase = '拉取完成'
+			_refresh_scan_details_deferred.call_deferred()
 			scan__start_scan_files()
 		elif result == 'FAILED':
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			show_main_log('拉取失败，扫描停止!!!!!')
+			scan_phase = '拉取失败，扫描停止'
+			_refresh_scan_details_deferred.call_deferred()
+			_hide_scan_detail_bt()
 		else:
 			print('[connect_home]->scan__end_pull_files_table, error result:%s, %s'%[req_type, result])
 		show_sub_log()
@@ -2290,6 +2461,8 @@ func scan__end_pull_files_table(who_i_am:String, taskid:String, req_type:String,
 func scan__start_scan_files() -> void:
 	print('[connect_home]->scan__start_scan_files')
 	show_main_log('开始扫描文件...')
+	scan_phase = '扫描文件中'
+	_refresh_scan_details_deferred.call_deferred()
 	var taskid:String = generate_task_id()
 	var _obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
 	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
@@ -2304,10 +2477,15 @@ func scan__end_scan_files(who_i_am:String, taskid:String, req_type:String, infor
 			scan_file_rt = JSON.parse_string(infor)
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			show_main_log('扫描文件完成!')
+			scan_phase = '扫描文件完成'
+			_refresh_scan_details_deferred.call_deferred()
 			scan__start_deal_files()
 		elif result == 'FAILED':
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			show_main_log('扫描文件失败, 扫描终止!!!!!')
+			scan_phase = '扫描文件失败，扫描终止'
+			_refresh_scan_details_deferred.call_deferred()
+			_hide_scan_detail_bt()
 		else:
 			print('[connect_home]->scan__end_scan_files, error result:%s, %s'%[req_type, result])
 		show_sub_log()
@@ -2317,6 +2495,8 @@ func scan__end_scan_files(who_i_am:String, taskid:String, req_type:String, infor
 func scan__start_deal_files() -> void:
 	print('[connect_home]->scan__start_deal_files')
 	show_main_log('整理文件!')
+	scan_phase = '整理文件中'
+	_refresh_scan_details_deferred.call_deferred()
 	var taskid:String = generate_task_id()
 	var _obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC, 
 	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
@@ -2344,6 +2524,9 @@ func scan__end_scan() -> void:
 	print('[connect_home]->scan__end_scan')
 	show_main_log('扫描完成!')
 	show_sub_log()
+	scan_phase = '扫描完成'
+	_refresh_scan_details_deferred.call_deferred()
+	_hide_scan_detail_bt()
 	update_and_show_files()
 	
 ## 2 ###         upload_files -> push_files_table -> update_and_show_files
@@ -2844,6 +3027,8 @@ func _end_pressed() -> void:
 func _process(_del)	-> void:
 	if upload_detail_bt and upload_detail_bt.visible:
 		upload_detail_bt.rotation += _del * 5.0
+	if scan_detail_bt and scan_detail_bt.visible:
+		scan_detail_bt.rotation += _del * 5.0
 	for taskid in clear_dic:
 		if Time.get_ticks_msec() - clear_dic[taskid]['time'] > 1000 * 1:
 			if clear_dic[taskid]['obj'] != null:
