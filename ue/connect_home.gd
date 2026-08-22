@@ -117,6 +117,8 @@ var scan_phase_label:Label = null
 var scan_stat_label:Label = null
 var scan_phase:String = ''
 var scan_logs:Array = []
+var scan_progress_cnt:int = 0
+var last_scan_progress_ui_update:int = 0
 
 ## touch control
 var drag_threshold: float = 50.0
@@ -2456,6 +2458,8 @@ func scan__start_scan() -> void:
 	upload_dic = {'notuploadyet':0, 'uploading': 0, 'uploaded':0, 'uploadfailed':0, 'dic':{}}
 	scan_logs = []
 	scan_phase = '开始扫描'
+	scan_progress_cnt = 0
+	last_scan_progress_ui_update = 0
 	if scan_detail_bt:
 		scan_detail_bt.rotation = 0
 		scan_detail_bt.visible = true
@@ -2510,6 +2514,7 @@ func scan__start_scan_files() -> void:
 	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
 	task_dic[taskid] = _obj
 	_obj.connect("scan_finished", scan__end_scan_files.bind(taskid, _obj))
+	_obj.connect("scan_progress", scan__receive_scan_progress.bind(taskid, _obj))
 	_obj.scan_a_dir(UE_ROOT_DIR)
 	
 func scan__end_scan_files(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:SCAN_C) -> void:
@@ -2534,6 +2539,18 @@ func scan__end_scan_files(who_i_am:String, taskid:String, req_type:String, infor
 	else:
 		print('[connect_home]->scan__end_scan_files, error message:%s, %s'%[req_type, result])
 	
+func scan__receive_scan_progress(who_i_am:String, taskid:String, infor:String, _taskid:String, _obj) -> void:
+	if who_i_am != 'scan_class' or taskid != _taskid:
+		return
+	scan_progress_cnt = infor.to_int()
+	var now:int = Time.get_ticks_msec()
+	if now - last_scan_progress_ui_update < 5000:
+		return
+	last_scan_progress_ui_update = now
+	scan_phase = '扫描文件中，已扫描:%s个文件' % scan_progress_cnt
+	logs_show_scan.call_deferred('set_text', '扫描进度: %s个文件' % scan_progress_cnt)
+	_refresh_scan_details_deferred.call_deferred()
+
 func scan__start_deal_files() -> void:
 	print('[connect_home]->scan__start_deal_files')
 	scan_phase = '整理文件中'

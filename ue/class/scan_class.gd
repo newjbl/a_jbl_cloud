@@ -16,7 +16,9 @@ var new_files_dic:Dictionary = {}
 var log_window = null
 var scan_rt:Dictionary = {'all':0, 'add':0, 'mod':0, 'del':0}
 var iconer_c:ICONER_C = null
+var last_progress_time:int = 0
 signal scan_finished(who_i_am:String, taskid:String, req_type:String, infor:String, result:String)
+signal scan_progress(who_i_am:String, taskid:String, infor:String)
 
 func _init(log_win, _taskid:String, db:String, _ue_root_dir:String, dirdic:Dictionary, dis_files_type:Dictionary,
 _ext_type_dic:Dictionary, _icon_dir:String) -> void:
@@ -129,6 +131,9 @@ func get_all_files(scaned_path:String) -> void:
 				'filesize': filesize, 'modtime': modtime, 'filetype': filetype, 'on_server': 'no', 
 				'on_ue': 'yes', 'ue_dir':current_path.replace(ue_root_dir + '/', ''), 'status':'normal', 
 				'res3':''}
+				if Time.get_ticks_msec() - last_progress_time > 500:
+					last_progress_time = Time.get_ticks_msec()
+					emit_signal("scan_progress", 'scan_class', taskid, '%s'%new_files_dic.size())
 		current_name = dir.get_next()
 	dir.list_dir_end()
 	print('[scan_class]->get_all_files:scan finish:%s'%[scaned_path])
