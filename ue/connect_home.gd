@@ -238,7 +238,7 @@ func build_gui() -> void:
 	scan_detail_bt = Button.new()
 	scan_detail_bt.name = 'scan_detail_bt'
 	scan_detail_bt.flat = true
-	scan_detail_bt.icon = _create_spinner_texture()
+	scan_detail_bt.icon = _create_triangle_texture()
 	scan_detail_bt.expand_icon = true
 	scan_detail_bt.custom_minimum_size = Vector2(40, 40)
 	scan_detail_bt.pivot_offset = Vector2(20, 20)
@@ -2445,7 +2445,7 @@ func _refresh_scan_details_deferred() -> void:
 
 func _hide_scan_detail_bt() -> void:
 	if scan_detail_bt:
-		scan_detail_bt.visible = false
+		scan_detail_bt.call_deferred('set_visible', false)
 ############################################ function control begin #################################
 ## 1 ### init -> pull_files_table -> scan_files -> deal_files -> update_and_show_files
 func scan__start_scan() -> void:
@@ -2467,6 +2467,11 @@ func scan__start_pull_files_table() -> void:
 	show_main_log('拉取文件列表')
 	scan_phase = '拉取文件列表'
 	_refresh_scan_details_deferred.call_deferred()
+	var _pull_thread = Thread.new()
+	thread_list.append(_pull_thread)
+	_pull_thread.start(_pull_files_table_thread)
+
+func _pull_files_table_thread() -> void:
 	var taskid:String = generate_task_id()
 	var _obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'yes')
 	task_dic[taskid] = _obj
