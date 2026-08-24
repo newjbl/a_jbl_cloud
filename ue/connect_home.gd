@@ -1634,7 +1634,7 @@ func _on_scan_dir_select_confirm() -> void:
 		return
 	if scan_dir_select_overlay:
 		scan_dir_select_overlay.call_deferred('set_visible', false)
-	print('[connect_home]->_on_scan_dir_select_confirm: 本次扫描目录:%s'%scan_dir_selected.keys())
+	print('[connect_home]->_on_scan_dir_select_confirm: 本次扫描目录:%s'%', '.join(scan_dir_selected.keys()))
 	scan__start_scan()
 
 func _get_scan_dir_dic() -> Dictionary:
@@ -2386,7 +2386,9 @@ func _refresh_upload_details() -> void:
 	for child in upload_details_list.get_children():
 		child.queue_free()
 	for filepath in upload_dic.get('dic', {}):
-		var fdic:Dictionary = upload_dic['dic'][filepath]
+		var fdic = upload_dic['dic'].get(filepath)
+		if not (fdic is Dictionary):
+			continue
 		var row:HBoxContainer = HBoxContainer.new()
 		row.add_theme_constant_override('separation', 10)
 		var name_lb:Label = Label.new()
@@ -2396,6 +2398,11 @@ func _refresh_upload_details() -> void:
 		name_lb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		name_lb.custom_minimum_size = Vector2(200, 0)
 		name_lb.clip_text = true
+		var size_lb:Label = Label.new()
+		size_lb.add_theme_font_size_override('font_size', 20)
+		size_lb.add_theme_color_override('font_color', Color(0.3, 0.3, 0.3, 1.0))
+		size_lb.text = _format_size(fdic.get('size', 0))
+		size_lb.custom_minimum_size = Vector2(110, 0)
 		var st_lb:Label = Label.new()
 		st_lb.add_theme_font_size_override('font_size', 20)
 		st_lb.add_theme_color_override('font_color', Color.BLACK)
@@ -2418,6 +2425,7 @@ func _refresh_upload_details() -> void:
 			_:
 				st_lb.text = rt
 		row.add_child(name_lb)
+		row.add_child(size_lb)
 		row.add_child(st_lb)
 		upload_details_list.add_child(row)
 
@@ -2850,7 +2858,7 @@ func scan__start_deal_files() -> void:
 				upload_dic['dic'][eachpath] = {}
 			upload_dic['dic'][eachpath]['rt'] = 'notuploadyet'
 			upload_dic['dic'][eachpath]['process'] = 0
-			upload_dic['dic'][eachpath]['size'] = 0
+			upload_dic['dic'][eachpath]['size'] = all_files_dic[eachpath].get('filesize', 0)
 			upload_dic['dic'][eachpath]['modtime'] = all_files_dic[eachpath].get('modtime', 0)
 			upload_dic['notuploadyet'] += 1
 		elif on_ue == 'yes' and on_server == 'yes':#need check if need delete on UE

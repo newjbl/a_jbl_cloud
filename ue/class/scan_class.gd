@@ -81,6 +81,13 @@ func merger_table() -> void:
 				rename_files_dic[eachfile] = bakfile
 				scan_rt.mod = scan_rt.mod + 1
 				print("mod:%s > %s"%[eachfile, bakfile])
+			elif sdic.get('status', 'normal') != 'normal':
+				print("[scan_class]->merger_table:add lost file %s"%[eachfile])
+				server_files_dic[eachfile] = ndic
+				scan_rt.add = scan_rt.add + 1
+			else:
+				sdic['on_ue'] = 'yes'
+
 	var iconer_file_dic:Dictionary = {}
 	for eachfile in server_files_dic:
 		var ext:String = server_files_dic[eachfile]['filetype']
@@ -126,6 +133,10 @@ func get_all_files(scaned_path:String) -> void:
 			var md5:String = FileAccess.get_md5(current_path)
 			var modtime = FileAccess.get_modified_time(current_path)
 			var filesize = FileAccess.get_size(current_path)
+			if filesize <= 0:
+				print("[scan_class]->get_all_files:ignore empty file:%s"%[current_path])
+				current_name = dir.get_next()
+				continue
 			if current_path not in new_files_dic:
 				new_files_dic[current_path] = {'md5': md5, 'filename': current_name,
 				'filesize': filesize, 'modtime': modtime, 'filetype': filetype, 'on_server': 'no', 
