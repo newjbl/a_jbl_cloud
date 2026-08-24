@@ -2936,28 +2936,25 @@ func upload__receive_upload_finish(who_i_am:String, taskid:String, req_type:Stri
 			show_upload_process()	
 		elif result == 'FAILED':
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
-			show_main_log('失败!')
 			print("[connect_home]->upload__receive_upload_finish:failed!!!!!!!")
-			upload_dic['dic'][infor]['rt'] = 'uploadfailed'
-			upload_dic['dic'][infor]['process'] = upload_dic['dic'][infor]['size']
+			if infor != '' and upload_dic.get('dic', {}).has(infor):
+				upload_dic['dic'][infor]['rt'] = 'uploadfailed'
+				upload_dic['dic'][infor]['process'] = upload_dic['dic'][infor]['size']
 			upload_dic['uploadfailed'] += 1
 			upload_dic['uploading'] -= 1
+			show_upload_process()
 			if upload_dic['notuploadyet'] + upload_dic['uploading'] == 0:
-				show_upload_process()
 				upload__start_query_files_dic(upload_dic)
 		elif result in ['FINISH', 'ERROR2']:
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			print("[connect_home]->upload__receive_upload_finish:upload file:%s, result:%s"%[infor, result])
-			if result == 'FINISH':
-				show_main_log('上传完成:%s'%[infor])
-			else:
-				show_main_log('已经存在不需要上传:%s'%[infor])
-			upload_dic['dic'][infor]['rt'] = 'uploaded'
-			upload_dic['dic'][infor]['process'] = upload_dic['dic'][infor]['size']
+			if infor != '' and upload_dic.get('dic', {}).has(infor):
+				upload_dic['dic'][infor]['rt'] = 'uploaded'
+				upload_dic['dic'][infor]['process'] = upload_dic['dic'][infor]['size']
 			upload_dic['uploaded'] += 1
 			upload_dic['uploading'] -= 1
+			show_upload_process()
 			if upload_dic['notuploadyet'] + upload_dic['uploading'] == 0:
-				show_upload_process()
 				upload__start_query_files_dic(upload_dic)
 		else:
 			print("[connect_home]->upload__receive_upload_finish:other message")

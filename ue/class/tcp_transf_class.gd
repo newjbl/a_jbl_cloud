@@ -222,6 +222,7 @@ func disconnect_to_server() -> void:
 #############################  upload ########################
 func upload_a_file(filepath:String) -> void:
 	print("[tcp_transf_class][%s]->upload_a_file:%s"%[taskid, filepath])
+	upload_file = filepath
 	if not filepath.ends_with('/files.txt'):
 		emit_signal("report_result", 'tcp_transf_class', taskid, 'upload', filepath, 'START')
 	connect_to_server()
@@ -230,7 +231,6 @@ func upload_a_file(filepath:String) -> void:
 		print('[tcp_transf_class]->upload_a_file:login failed!')
 		upload_report_result('FAILED')
 		return
-	upload_file = filepath
 	upload_running = true
 	upload_thread = Thread.new()
 	upload_thread.start(upload_a_file_thread.bind(filepath))
