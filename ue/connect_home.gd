@@ -79,6 +79,9 @@ var need_update_ui:bool = false
 ## steps dic
 var scan_file_rt:Dictionary = {}
 var upload_dic:Dictionary = {}
+var upload_mutex:Mutex = Mutex.new()
+var upload_details_dirty:bool = false
+var last_upload_details_refresh:int = 0
 var download_file_rt:Dictionary = {}
 var delete_dic:Dictionary = {}
 
@@ -2385,10 +2388,19 @@ func _refresh_upload_details() -> void:
 		return
 	for child in upload_details_list.get_children():
 		child.queue_free()
+	upload_mutex.lock()
+	var rows:Array = []
 	for filepath in upload_dic.get('dic', {}):
 		var fdic = upload_dic['dic'].get(filepath)
 		if not (fdic is Dictionary):
 			continue
+		rows.append({'filepath': filepath, 'rt': fdic.get('rt', ''), 'process': fdic.get('process', 0), 'size': fdic.get('size', 0)})
+	upload_mutex.unlock()
+	for row_data in rows:
+		var filepath:String = row_data['filepath']
+		var rt:String = row_data['rt']
+		var process:int = row_data['process']
+		var size:int = row_data['size']
 		var row:HBoxContainer = HBoxContainer.new()
 		row.add_theme_constant_override('separation', 10)
 		var name_lb:Label = Label.new()
@@ -2401,14 +2413,11 @@ func _refresh_upload_details() -> void:
 		var size_lb:Label = Label.new()
 		size_lb.add_theme_font_size_override('font_size', 20)
 		size_lb.add_theme_color_override('font_color', Color(0.3, 0.3, 0.3, 1.0))
-		size_lb.text = _format_size(fdic.get('size', 0))
+		size_lb.text = _format_size(size)
 		size_lb.custom_minimum_size = Vector2(110, 0)
 		var st_lb:Label = Label.new()
 		st_lb.add_theme_font_size_override('font_size', 20)
 		st_lb.add_theme_color_override('font_color', Color.BLACK)
-		var rt:String = fdic.get('rt', '')
-		var process:int = fdic.get('process', 0)
-		var size:int = fdic.get('size', 0)
 		var pct:int = 0
 		if size > 0:
 			pct = int(100.0 * process / size)
@@ -2444,9 +2453,14 @@ func update_files_table_after_upload_thread() -> void:
 	task_dic[taskid] = _obj
 	var f_table:Dictionary = _obj.read_db().get('all_files_dic', {})
 	var d_table:Dictionary = _obj.read_db().get('rename_files_dic', {})
-	for eachfile in upload_dic['dic']:
-		if upload_dic['dic'][eachfile]['rt'] != 'uploaded':
-			continue
+	upload_mutex.lock()
+	var uploaded_list:Array = []
+	for eachfile in upload_dic.get('dic', {}):
+		var fdic = upload_dic['dic'].get(eachfile)
+		if fdic is Dictionary and fdic.get('rt', '') == 'uploaded':
+			uploaded_list.append(eachfile)
+	upload_mutex.unlock()
+	for eachfile in uploaded_list:
 		if eachfile in f_table:
 			f_table[eachfile]['on_server'] = 'yes'
 			f_table[eachfile]['status'] = 'normal'
@@ -2556,10 +2570,15 @@ func show_sub_log() -> void:
 	if 'add' in scan_file_rt:
 		logs_show_scan.call_deferred("set_text", "%s"%['扫描:%s, 新增:%s, 修改:%s, 可删除:%s'%[
 			scan_file_rt.all, scan_file_rt.add, scan_file_rt.mod, scan_file_rt.del]])
-	if upload_dic.get('notuploadyet', 0) + upload_dic.get('uploading', 0) + \
-		upload_dic.get('uploaded', 0) + upload_dic.get('uploadfailed', 0) > 0:
+	upload_mutex.lock()
+	var notuploadyet:int = upload_dic.get('notuploadyet', 0)
+	var uploading:int = upload_dic.get('uploading', 0)
+	var uploaded:int = upload_dic.get('uploaded', 0)
+	var uploadfailed:int = upload_dic.get('uploadfailed', 0)
+	upload_mutex.unlock()
+	if notuploadyet + uploading + uploaded + uploadfailed > 0:
 		logs_show_upload.call_deferred("set_text", "%s"%['待上传:%s, 上传中:%s, 上传成功:%s, 上传失败:%s'%[
-			upload_dic.notuploadyet, upload_dic.uploading, upload_dic.uploaded, upload_dic.uploadfailed]])
+			notuploadyet, uploading, uploaded, uploadfailed]])
 	_refresh_scan_details_deferred.call_deferred()
 	#logs_show_delete.call_deferred("set_text", "%s"%[logs_dic.delete_rt])
 
@@ -2575,19 +2594,22 @@ func show_main_log(msg:String) -> void:
 		_refresh_scan_details_deferred.call_deferred()
 	
 func show_upload_process() -> void:
+	upload_mutex.lock()
 	var b:int = 0
 	var c:int = 0
-	for eachf in upload_dic['dic']:
-		b += upload_dic['dic'][eachf]['process']
-		c += upload_dic['dic'][eachf]['size']
+	for eachf in upload_dic.get('dic', {}):
+		var fdic = upload_dic['dic'].get(eachf)
+		if fdic is Dictionary:
+			b += fdic.get('process', 0)
+			c += fdic.get('size', 0)
+	upload_mutex.unlock()
 	if c != 0:
 		logs_show.call_deferred("set_text", '%s总体上传进度: %.1f%%'%[current_doing, 100.0 * b / c])
 	if upload_details_overlay:
 		_refresh_upload_details_deferred.call_deferred()
 
 func _refresh_upload_details_deferred() -> void:
-	if upload_details_overlay and upload_details_overlay.visible:
-		_refresh_upload_details()
+	upload_details_dirty = true
 
 func _on_scan_detail_bt_pressed() -> void:
 	print('[connect_home]->_on_scan_detail_bt_pressed')
@@ -2849,6 +2871,7 @@ func scan__start_deal_files() -> void:
 	var files_dic:Dictionary = _obj.read_db()
 	var all_files_dic:Dictionary = files_dic.get("all_files_dic", {})
 	_obj._destory()
+	upload_mutex.lock()
 	for eachpath in all_files_dic:
 		var on_server = all_files_dic[eachpath]['on_server']
 		var on_ue = all_files_dic[eachpath]['on_ue']
@@ -2864,6 +2887,7 @@ func scan__start_deal_files() -> void:
 		elif on_ue == 'yes' and on_server == 'yes':#need check if need delete on UE
 			if if_need_delete_ue_file(all_files_dic[eachpath], 7):
 				delete_dic[eachpath] = 'not delete yet'
+	upload_mutex.unlock()
 	scan__end_scan()
 	
 func scan__end_scan() -> void:
@@ -2894,30 +2918,39 @@ func upload__start_upload() -> void:
 	
 func upload__start_upload_thread() -> void:
 	print('[connect_home]->upload__start_upload_thread')
-	while upload_dic['notuploadyet'] > 0:
-		var need_upload_cnt:int = max(0, 5 - upload_dic['uploading'])
-		if need_upload_cnt <= 0:
-			continue
-		#print("[connect_home]->upload_files_thread:current upload_dic:%s"%[JSON.stringify(upload_dic['dic'])])
-		for filepath in upload_dic['dic']:
-			if upload_dic['dic'][filepath]['rt'] != 'notuploadyet':
-				continue
-			upload_dic['dic'][filepath]['rt'] = 'uploading'
-			upload_dic['uploading'] += 1
-			upload_dic['notuploadyet'] -= 1
-			show_sub_log()
-			print("[connect_home]->upload_files_thread:will upload:%s"%filepath)
-			upload__upload_a_file(filepath)
-			need_upload_cnt -= 1
-			if need_upload_cnt <= 0:
+	while true:
+		var filepath:String = ''
+		upload_mutex.lock()
+		if upload_dic.get('notuploadyet', 0) <= 0:
+			upload_mutex.unlock()
+			break
+		var need_upload_cnt:int = max(0, 5 - upload_dic.get('uploading', 0))
+		if need_upload_cnt > 0:
+			for fp in upload_dic.get('dic', {}):
+				var fdic = upload_dic['dic'].get(fp)
+				if not (fdic is Dictionary):
+					continue
+				if fdic.get('rt', '') != 'notuploadyet':
+					continue
+				fdic['rt'] = 'uploading'
+				upload_dic['dic'][fp] = fdic
+				upload_dic['uploading'] += 1
+				upload_dic['notuploadyet'] -= 1
+				filepath = fp
 				break
+		upload_mutex.unlock()
+		if filepath == '':
+			continue
+		show_sub_log()
+		print("[connect_home]->upload_files_thread:will upload:%s"%filepath)
+		upload__upload_a_file(filepath)
 	print("[connect_home]->upload_files_thread:thread_finish")
 
 func upload__upload_a_file(filepath:String) -> bool:
 	var taskid:String = generate_task_id()
 	var _obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
 	task_dic[taskid] = _obj
-	_obj.connect("report_result", upload__receive_upload_finish.bind(taskid, _obj))
+	_obj.connect("report_result", upload__receive_upload_finish.bind(taskid, _obj), CONNECT_DEFERRED)
 	_obj.upload_a_file(filepath)
 	return true
 	
@@ -2929,32 +2962,49 @@ func upload__receive_upload_finish(who_i_am:String, taskid:String, req_type:Stri
 		#	show_main_log('开始%s:%s'%[e2z_dic.get(req_type, ''), infor])
 		if result == 'PROCESS':
 			var a:Array = infor.split(';')
-			var filepath:String = a[1]
-			if filepath in upload_dic['dic']:
-				upload_dic['dic'][filepath]['process'] = a[0].to_int()
-				upload_dic['dic'][filepath]['size'] = a[2].to_int()
+			if a.size() > 2:
+				var filepath:String = a[1]
+				upload_mutex.lock()
+				var fdic = upload_dic.get('dic', {}).get(filepath)
+				if fdic is Dictionary:
+					fdic['process'] = a[0].to_int()
+					fdic['size'] = a[2].to_int()
+					upload_dic['dic'][filepath] = fdic
+				upload_mutex.unlock()
 			show_upload_process()	
 		elif result == 'FAILED':
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			print("[connect_home]->upload__receive_upload_finish:failed!!!!!!!")
+			upload_mutex.lock()
 			if infor != '' and upload_dic.get('dic', {}).has(infor):
-				upload_dic['dic'][infor]['rt'] = 'uploadfailed'
-				upload_dic['dic'][infor]['process'] = upload_dic['dic'][infor]['size']
+				var fdic = upload_dic['dic'].get(infor)
+				if fdic is Dictionary:
+					fdic['rt'] = 'uploadfailed'
+					fdic['process'] = fdic.get('size', 0)
+					upload_dic['dic'][infor] = fdic
 			upload_dic['uploadfailed'] += 1
 			upload_dic['uploading'] -= 1
+			var all_done:bool = (upload_dic['notuploadyet'] + upload_dic['uploading'] == 0)
+			upload_mutex.unlock()
 			show_upload_process()
-			if upload_dic['notuploadyet'] + upload_dic['uploading'] == 0:
+			if all_done:
 				upload__start_query_files_dic(upload_dic)
 		elif result in ['FINISH', 'ERROR2']:
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			print("[connect_home]->upload__receive_upload_finish:upload file:%s, result:%s"%[infor, result])
+			upload_mutex.lock()
 			if infor != '' and upload_dic.get('dic', {}).has(infor):
-				upload_dic['dic'][infor]['rt'] = 'uploaded'
-				upload_dic['dic'][infor]['process'] = upload_dic['dic'][infor]['size']
+				var fdic = upload_dic['dic'].get(infor)
+				if fdic is Dictionary:
+					fdic['rt'] = 'uploaded'
+					fdic['process'] = fdic.get('size', 0)
+					upload_dic['dic'][infor] = fdic
 			upload_dic['uploaded'] += 1
 			upload_dic['uploading'] -= 1
+			var all_done:bool = (upload_dic['notuploadyet'] + upload_dic['uploading'] == 0)
+			upload_mutex.unlock()
 			show_upload_process()
-			if upload_dic['notuploadyet'] + upload_dic['uploading'] == 0:
+			if all_done:
 				upload__start_query_files_dic(upload_dic)
 		else:
 			print("[connect_home]->upload__receive_upload_finish:other message")
@@ -2971,8 +3021,12 @@ func upload__start_query_files_dic(_filedic:Dictionary) -> void:
 	task_dic[taskid] = _obj
 	_obj.connect("report_result", upload__end_query_files_dic.bind(taskid, _obj))
 	var querydic:Dictionary = {}
-	var _querydic:Dictionary = _filedic.get('dic', {})
-	for eachf in _querydic:
+	upload_mutex.lock()
+	var file_list:Array = []
+	for eachf in _filedic.get('dic', {}):
+		file_list.append(eachf)
+	upload_mutex.unlock()
+	for eachf in file_list:
 		var file_md5:String = FileAccess.get_md5(eachf)
 		var filename:String = eachf
 		if UE_ROOT_DIR + '/' in eachf:
@@ -2990,8 +3044,12 @@ func upload__end_query_files_dic(who_i_am:String, taskid:String, req_type:String
 			if infor != 'all ok':
 				var retry_files:Array = infor.split(';')
 				for eachf in retry_files:
-					if eachf in upload_dic.get('dic', {}):
-						upload_dic['dic'][eachf]['rt'] = 'notuploadyet'
+					upload_mutex.lock()
+					var fdic = upload_dic.get('dic', {}).get(eachf)
+					if fdic is Dictionary:
+						fdic['rt'] = 'notuploadyet'
+						upload_dic['dic'][eachf] = fdic
+					upload_mutex.unlock()
 			upload__update_files_table_after_upload()
 		elif result == 'FAILED':
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
@@ -3081,9 +3139,14 @@ func upload__update_files_table_after_upload() -> void:
 	task_dic[taskid] = _obj
 	var f_table:Dictionary = _obj.read_db().get('all_files_dic', {})
 	var d_table:Dictionary = _obj.read_db().get('rename_files_dic', {})
-	for eachfile in upload_dic['dic']:
-		if upload_dic['dic'][eachfile]['rt'] != 'uploaded':
-			continue
+	upload_mutex.lock()
+	var uploaded_list:Array = []
+	for eachfile in upload_dic.get('dic', {}):
+		var fdic = upload_dic['dic'].get(eachfile)
+		if fdic is Dictionary and fdic.get('rt', '') == 'uploaded':
+			uploaded_list.append(eachfile)
+	upload_mutex.unlock()
+	for eachfile in uploaded_list:
 		if eachfile in f_table:
 			f_table[eachfile]['on_server'] = 'yes'
 			f_table[eachfile]['status'] = 'normal'
@@ -3392,6 +3455,11 @@ func _process(_del)	-> void:
 	if need_update_ui:
 		update_ui()
 		need_update_ui = false
+	if upload_details_dirty and upload_details_overlay and upload_details_overlay.visible:
+		if Time.get_ticks_msec() - last_upload_details_refresh > 200:
+			last_upload_details_refresh = Time.get_ticks_msec()
+			upload_details_dirty = false
+			_refresh_upload_details()
 	
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
