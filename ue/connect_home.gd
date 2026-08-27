@@ -1512,6 +1512,7 @@ func _show_scan_dir_select_dialog() -> void:
 	for eachdir in dir_list:
 		var cb:CheckBox = CheckBox.new()
 		cb.name = 'cb_%s'%eachdir
+		cb.set_meta('dir_name', eachdir)
 		cb.text = eachdir
 		cb.button_pressed = true
 		cb.add_theme_font_size_override('font_size', 22)
@@ -1631,7 +1632,10 @@ func _on_scan_dir_select_confirm() -> void:
 	scan_dir_selected = {}
 	for child in scan_dir_select_box.get_children():
 		if child is CheckBox and child.button_pressed:
-			scan_dir_selected[child.name.trim_prefix('cb_')] = 'yes'
+			var dir_name:String = child.get_meta('dir_name', '')
+			if dir_name == '':
+				continue
+			scan_dir_selected[dir_name] = 'yes'
 	if scan_dir_selected.size() <= 0:
 		show_main_log('请至少选择一个扫描目录!')
 		return
@@ -2763,6 +2767,7 @@ func scan__start_scan() -> void:
 	show_main_log('开始扫描!')
 	scan_file_rt = {}
 	upload_dic = {'notuploadyet':0, 'uploading': 0, 'uploaded':0, 'uploadfailed':0, 'dic':{}}
+	delete_dic = {}
 	scan_logs = []
 	scan_phase = '开始扫描'
 	scan_progress_cnt = 0
@@ -3150,16 +3155,6 @@ func upload__update_files_table_after_upload() -> void:
 		if eachfile in f_table:
 			f_table[eachfile]['on_server'] = 'yes'
 			f_table[eachfile]['status'] = 'normal'
-	scan_file_rt = {}
-	scan_file_rt.all = 0
-	scan_file_rt.add = 0
-	scan_file_rt.mod = 0
-	scan_file_rt.del = 0
-	for eachfile in f_table:
-		if f_table[eachfile].get('on_ue', 'no') == 'yes':
-			scan_file_rt.all += 1
-			if f_table[eachfile].get('on_server', 'no') == 'no':
-				scan_file_rt.add += 1
 	_obj.write_db({'all_files_dic': f_table, 'rename_files_dic': d_table})
 	_obj._destory()
 	print("[connect_home]->update_files_table_after_upload_thread finish")
