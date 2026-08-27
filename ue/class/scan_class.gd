@@ -55,11 +55,14 @@ func merger_table() -> void:
 	var db_dic:Dictionary = read_db()
 	var server_files_dic:Dictionary = db_dic.get('all_files_dic', {})
 	var rename_files_dic:Dictionary = {}
-	#### UE侧删除了的文件, 标记on_ue为no
+	#### UE侧删除了的文件, 标记on_ue为no (先确认文件真的不在手机, 避免扫描范围异常时误标)
 	for eachfile in server_files_dic:
 		if eachfile not in new_files_dic:
-			server_files_dic[eachfile]['on_ue'] = 'no'
-			scan_rt.del += 1
+			if FileAccess.file_exists(eachfile):
+				server_files_dic[eachfile]['on_ue'] = 'yes'
+			else:
+				server_files_dic[eachfile]['on_ue'] = 'no'
+				scan_rt.del += 1
 	scan_rt.all = new_files_dic.keys().size()
 	for eachfile in new_files_dic:
 		var sdic = server_files_dic.get(eachfile, {})
@@ -140,7 +143,7 @@ func get_all_files(scaned_path:String) -> void:
 			if current_path not in new_files_dic:
 				new_files_dic[current_path] = {'md5': md5, 'filename': current_name,
 				'filesize': filesize, 'modtime': modtime, 'filetype': filetype, 'on_server': 'no', 
-				'on_ue': 'yes', 'ue_dir':current_path.replace(ue_root_dir + '/', ''), 'status':'normal', 
+				'on_ue': 'yes', 'ue_dir':current_path.replace(ue_root_dir, ''), 'status':'normal', 
 				'res3':''}
 				if Time.get_ticks_msec() - last_progress_time > 500:
 					last_progress_time = Time.get_ticks_msec()

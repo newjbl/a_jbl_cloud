@@ -494,35 +494,80 @@ def start_godot_download_server():
 def review_files_on_server():
     print("[%s]start review files on server"%(datetime.now()))
     while True:
-        root, dirs, files = list_all_dir_files(FILE_SAVE_DIR)
-        for usr in dirs:
-            files_txt_path = os.path.join(FILE_SAVE_DIR, usr, 'files.txt')
-            if not os.path.exists(files_txt_path):
-                print("[%s][%s]start review files on server:files.txt not exist!"%(datetime.now(), usr))
-                continue
-            files_txt_dic = {}
-            with open(files_txt_path, 'r', encoding='utf-8') as f:
-                files_txt = f.read()
-                files_txt_dic = json.loads(files_txt)
-            all_files_dic = files_txt_dic.get('all_files_dic', {})
-            if_changed = False
-            for filepath, infor in all_files_dic.items():
-                ue_dir = infor.get('ue_dir', '')
-                md5 = infor.get('md5', '')
-                fin_file_path = os.path.join(FILE_SAVE_DIR, usr, ue_dir)
-                if not os.path.exists(fin_file_path):
-                    print("[%s][%s]start review files on server:file(%s) not exist!"%(datetime.now(), usr, fin_file_path))
-                    files_txt_dic['all_files_dic'][filepath]['status'] = 'lost'
-                    if_changed = True
-                else:
-                    md5_check = caculate_md5(fin_file_path)
-                    if md5_check != md5:
-                        print("[%s][%s]start review files on server:file(%s) md5 check failed(md5=%s, md5_check=%s)!"%(datetime.now(), usr, fin_file_path, md5, md5_check))
-                        files_txt_dic['all_files_dic'][filepath]['status'] = 'damaged'
-                        if_changed = True
-            if if_changed:
-                with open(files_txt_path, 'w', encoding='utf-8') as f:
-                    f.write(json.dumps(files_txt_dic, indent=2, ensure_ascii=False))
+        try:
+            root, dirs, files = list_all_dir_files(FILE_SAVE_DIR)
+            for usr in dirs:
+                files_txt_path = os.path.join(FILE_SAVE_DIR, usr, 'files.txt')
+                if not os.path.exists(files_txt_path):
+                    print("[%s][%s]start review files on server:files.txt not exist!"%(datetime.now(), usr))
+                    continue
+                files_txt_dic = {}
+                try:
+                    with open(files_txt_path, 'r', encoding='utf-8') as f:
+                        files_txt = f.read()
+                        files_txt_dic = json.loads(files_txt)
+                except Exception as e:
+                    import traceback
+                    print("[%s][%s]start review files on server:read files.txt failed: %s"%(datetime.now(), usr, e))
+                    print(traceback.format_exc())
+                    continue
+                all_files_dic = files_txt_dic.get('all_files_dic', {})
+                if_changed = False
+                usr_dir = os.path.join(FILE_SAVE_DIR, usr)
+                for filepath, infor in all_files_dic.items():
+                    try:
+                        ue_dir = infor.get('ue_dir', '')
+                        md5 = infor.get('md5', '')
+                        fin_file_path = os.path.join(usr_dir, ue_dir)
+                        if not os.path.exists(fin_file_path) and os.path.isabs(ue_dir):
+                            # 兼容旧数据: ue_dir 曾存绝对路径, 按文件名+md5在用户目录下找回实际文件并修正
+                            filename = os.path.basename(ue_dir)
+                            found_path = None
+                            same_name_path = None
+                            for r, d, fs in os.walk(usr_dir):
+                                if filename in fs:
+                                    cand = os.path.join(r, filename)
+                                    if same_name_path is None:
+                                        same_name_path = cand
+                                    try:
+                                        if caculate_md5(cand) == md5:
+                                            found_path = cand
+                                            break
+                                    except:
+                                        pass
+                            if found_path:
+                                rel = os.path.relpath(found_path, usr_dir).replace('\\', '/')
+                                files_txt_dic['all_files_dic'][filepath]['ue_dir'] = rel
+                                files_txt_dic['all_files_dic'][filepath]['status'] = 'normal'
+                                if_changed = True
+                                print("[%s][%s]start review files on server:fix ue_dir(%s -> %s)"%(datetime.now(), usr, ue_dir, rel))
+                                continue
+                            if same_name_path:
+                                print("[%s][%s]start review files on server:file(%s) md5 check failed(md5=%s, md5_check=%s)!"%(datetime.now(), usr, same_name_path, md5, caculate_md5(same_name_path)))
+                                files_txt_dic['all_files_dic'][filepath]['status'] = 'damaged'
+                                if_changed = True
+                                continue
+                        if not os.path.exists(fin_file_path):
+                            print("[%s][%s]start review files on server:file(%s) not exist!"%(datetime.now(), usr, fin_file_path))
+                            files_txt_dic['all_files_dic'][filepath]['status'] = 'lost'
+                            if_changed = True
+                        else:
+                            md5_check = caculate_md5(fin_file_path)
+                            if md5_check != md5:
+                                print("[%s][%s]start review files on server:file(%s) md5 check failed(md5=%s, md5_check=%s)!"%(datetime.now(), usr, fin_file_path, md5, md5_check))
+                                files_txt_dic['all_files_dic'][filepath]['status'] = 'damaged'
+                                if_changed = True
+                    except Exception as e:
+                        import traceback
+                        print("[%s][%s]start review files on server:check file(%s) failed: %s"%(datetime.now(), usr, filepath, e))
+                        print(traceback.format_exc())
+                if if_changed:
+                    with open(files_txt_path, 'w', encoding='utf-8') as f:
+                        f.write(json.dumps(files_txt_dic, indent=2, ensure_ascii=False))
+        except Exception as e:
+            import traceback
+            print("[%s]start review files on server:review failed: %s"%(datetime.now(), e))
+            print(traceback.format_exc())
         time.sleep(60 * 60 * 24)
 
 if __name__ == "__main__":
