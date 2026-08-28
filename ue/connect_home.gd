@@ -113,11 +113,13 @@ var cleanup_overlay:PanelContainer = null
 var cleanup_days:int = 30
 var cleanup_detail_bt:Button = null
 var cleanup_busy:bool = false
+var cleanup_waiting_confirm:bool = false
 var cleanup_candidates:Array = []
 var cleanup_deletable:Array = []
 var cleanup_backup_local_files_txt:String = ''
 var cleanup_result_overlay:PanelContainer = null
 var cleanup_result_list:VBoxContainer = null
+var cleanup_result_checkboxes:Dictionary = {}
 var upload_batch_overlay:PanelContainer = null
 var upload_batch_limit_input:LineEdit = null
 var scan_dir_select_overlay:PanelContainer = null
@@ -252,6 +254,7 @@ func build_gui() -> void:
 	upload_detail_bt.icon = _create_spinner_texture()
 	upload_detail_bt.expand_icon = true
 	upload_detail_bt.custom_minimum_size = Vector2(40, 40)
+	upload_detail_bt.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	upload_detail_bt.pivot_offset = Vector2(20, 20)
 	upload_detail_bt.visible = false
 	upload_detail_bt.tooltip_text = '查看上传详情'
@@ -263,6 +266,7 @@ func build_gui() -> void:
 	scan_detail_bt.icon = _create_triangle_texture()
 	scan_detail_bt.expand_icon = true
 	scan_detail_bt.custom_minimum_size = Vector2(40, 40)
+	scan_detail_bt.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	scan_detail_bt.pivot_offset = Vector2(20, 20)
 	scan_detail_bt.visible = false
 	scan_detail_bt.tooltip_text = '查看扫描详情'
@@ -274,9 +278,11 @@ func build_gui() -> void:
 	cleanup_detail_bt.icon = _create_spinner_texture()
 	cleanup_detail_bt.expand_icon = true
 	cleanup_detail_bt.custom_minimum_size = Vector2(40, 40)
+	cleanup_detail_bt.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	cleanup_detail_bt.pivot_offset = Vector2(20, 20)
 	cleanup_detail_bt.visible = false
 	cleanup_detail_bt.tooltip_text = '正在清理'
+	cleanup_detail_bt.pressed.connect(_on_cleanup_detail_bt_pressed)
 	hbox_l0.add_child(cleanup_detail_bt)
 	
 	var hbox_l0_2:HBoxContainer = HBoxContainer.new()
@@ -2340,6 +2346,23 @@ func _point_in_triangle(p:Vector2, a:Vector2, b:Vector2, c:Vector2) -> bool:
 	var v:float = (dot00 * dot12 - dot01 * dot02) * inv
 	return (u >= 0.0) and (v >= 0.0) and (u + v <= 1.0)
 
+func _create_warning_texture() -> Texture2D:
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var col := Color(0.95, 0.12, 0.12, 1.0)
+	## 叹号竖条
+	for y in range(10, 46):
+		for x in range(20, 45):
+			img.set_pixel(x, y, col)
+	## 叹号圆点
+	var center := Vector2(32, 54)
+	for y in range(64):
+		for x in range(64):
+			var d := Vector2(x + 0.5, y + 0.5) - center
+			if d.length() <= 8.5:
+				img.set_pixel(x, y, col)
+	return ImageTexture.create_from_image(img)
+
 func _on_upload_detail_bt_pressed() -> void:
 	print('[connect_home]->_on_upload_detail_bt_pressed')
 	_show_upload_details_overlay()
@@ -3092,7 +3115,9 @@ func cleanup__start_cleanup(days:int) -> void:
 	cleanup_candidates = []
 	cleanup_deletable = []
 	cleanup_busy = true
+	cleanup_waiting_confirm = false
 	if cleanup_detail_bt:
+		cleanup_detail_bt.icon = _create_spinner_texture()
 		cleanup_detail_bt.rotation = 0
 		cleanup_detail_bt.visible = true
 	show_main_log('正在查询 %s 天以前的可清理文件...'%days)
@@ -3128,7 +3153,7 @@ func cleanup__start_cleanup(days:int) -> void:
 	var taskid:String = generate_task_id()
 	var _obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'yes')
 	task_dic[taskid] = _obj
-	_obj.connect("report_result", cleanup__end_pull_sv_files_table.bind(taskid, _obj))
+	_obj.connect("report_result", cleanup__end_pull_sv_files_table.bind(taskid, _obj), CONNECT_DEFERRED)
 	_obj.download_a_file(UE_ROOT_DIR.path_join('files.txt'))
 
 func cleanup__end_pull_sv_files_table(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
@@ -3165,7 +3190,7 @@ func cleanup__end_pull_sv_files_table(who_i_am:String, taskid:String, req_type:S
 			var query_taskid:String = generate_task_id()
 			var _obj2 = TCP_TRANSF_C.new(log_window, query_taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
 			task_dic[query_taskid] = _obj2
-			_obj2.connect("report_result", cleanup__end_query_files.bind(query_taskid, _obj2))
+			_obj2.connect("report_result", cleanup__end_query_files.bind(query_taskid, _obj2), CONNECT_DEFERRED)
 			_obj2.query_files(querydic)
 		elif result == 'FAILED':
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
@@ -3196,6 +3221,7 @@ func _cleanup_restore_local_files_txt() -> void:
 
 func cleanup__finish_busy() -> void:
 	cleanup_busy = false
+	cleanup_waiting_confirm = false
 	if cleanup_detail_bt:
 		cleanup_detail_bt.call_deferred('set_visible', false)
 
@@ -3214,12 +3240,18 @@ func cleanup__end_query_files(who_i_am:String, taskid:String, req_type:String, i
 					cleanup_deletable.append(cand)
 			## 步骤5: 按创建时间正序
 			cleanup_deletable.sort_custom(func(a, b): return a['modtime'] < b['modtime'])
-			cleanup__finish_busy()
 			if cleanup_deletable.size() <= 0:
+				cleanup__finish_busy()
 				show_main_log('没有可清理的文件')
 				return
-			show_main_log('查询完成, 可清理 %s 个文件'%cleanup_deletable.size())
-			_show_cleanup_result_dialog()
+			## 查找完成: 方块变叹号, 等待用户点击查看列表
+			cleanup_busy = false
+			cleanup_waiting_confirm = true
+			if cleanup_detail_bt:
+				cleanup_detail_bt.icon = _create_warning_texture()
+				cleanup_detail_bt.rotation = 0
+				cleanup_detail_bt.visible = true
+			show_main_log('找到可清理文件 %s 个, 点击右上角叹号查看'%cleanup_deletable.size())
 		elif result == 'FAILED':
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			cleanup__finish_busy()
@@ -3237,10 +3269,15 @@ func _show_cleanup_result_dialog() -> void:
 		add_child(cleanup_result_overlay)
 	for child in cleanup_result_list.get_children():
 		child.queue_free()
+	cleanup_result_checkboxes = {}
 	cleanup_result_overlay.get_node('VBoxContainer/title_label').text = '可清理文件(%s个):'%cleanup_deletable.size()
 	for cand in cleanup_deletable:
 		var row:HBoxContainer = HBoxContainer.new()
 		row.add_theme_constant_override('separation', 10)
+		var cb:CheckBox = CheckBox.new()
+		cb.button_pressed = true
+		cb.add_theme_font_size_override('font_size', 20)
+		cb.custom_minimum_size = Vector2(40, 40)
 		var name_lb:Label = Label.new()
 		name_lb.text = cand['filename']
 		name_lb.add_theme_font_size_override('font_size', 20)
@@ -3258,9 +3295,11 @@ func _show_cleanup_result_dialog() -> void:
 		time_lb.add_theme_font_size_override('font_size', 20)
 		time_lb.add_theme_color_override('font_color', Color(0.3, 0.3, 0.3, 1.0))
 		time_lb.custom_minimum_size = Vector2(180, 0)
+		row.add_child(cb)
 		row.add_child(name_lb)
 		row.add_child(size_lb)
 		row.add_child(time_lb)
+		cleanup_result_checkboxes[cand['filepath']] = cb
 		cleanup_result_list.add_child(row)
 	cleanup_result_overlay.reset_size()
 	var dsize:Vector2 = cleanup_result_overlay.size
@@ -3310,21 +3349,35 @@ func _build_cleanup_result_overlay() -> PanelContainer:
 	var sep:HSeparator = HSeparator.new()
 	var hb:HBoxContainer = HBoxContainer.new()
 	hb.alignment = BoxContainer.ALIGNMENT_CENTER
-	hb.add_theme_constant_override('separation', 30)
+	hb.add_theme_constant_override('separation', 15)
+	var select_all_bt:Button = Button.new()
+	select_all_bt.text = '全选'
+	select_all_bt.add_theme_font_size_override('font_size', 24)
+	select_all_bt.add_theme_color_override('font_color', Color.BLACK)
+	select_all_bt.custom_minimum_size = Vector2(110, 50)
+	select_all_bt.pressed.connect(_on_cleanup_result_select_all)
+	var select_none_bt:Button = Button.new()
+	select_none_bt.text = '全否'
+	select_none_bt.add_theme_font_size_override('font_size', 24)
+	select_none_bt.add_theme_color_override('font_color', Color.BLACK)
+	select_none_bt.custom_minimum_size = Vector2(110, 50)
+	select_none_bt.pressed.connect(_on_cleanup_result_select_none)
+	var confirm_bt:Button = Button.new()
+	confirm_bt.text = '确定'
+	confirm_bt.add_theme_font_size_override('font_size', 24)
+	confirm_bt.add_theme_color_override('font_color', Color.BLACK)
+	confirm_bt.custom_minimum_size = Vector2(110, 50)
+	confirm_bt.pressed.connect(_on_cleanup_result_confirm)
 	var cancel_bt:Button = Button.new()
 	cancel_bt.text = '取消'
 	cancel_bt.add_theme_font_size_override('font_size', 24)
 	cancel_bt.add_theme_color_override('font_color', Color.BLACK)
-	cancel_bt.custom_minimum_size = Vector2(140, 50)
+	cancel_bt.custom_minimum_size = Vector2(110, 50)
 	cancel_bt.pressed.connect(_on_cleanup_result_cancel)
-	var confirm_bt:Button = Button.new()
-	confirm_bt.text = '确认删除'
-	confirm_bt.add_theme_font_size_override('font_size', 24)
-	confirm_bt.add_theme_color_override('font_color', Color.BLACK)
-	confirm_bt.custom_minimum_size = Vector2(140, 50)
-	confirm_bt.pressed.connect(_on_cleanup_result_confirm)
-	hb.add_child(cancel_bt)
+	hb.add_child(select_all_bt)
+	hb.add_child(select_none_bt)
 	hb.add_child(confirm_bt)
+	hb.add_child(cancel_bt)
 	vb.add_child(title_label)
 	vb.add_child(tip_label)
 	vb.add_child(scroll)
@@ -3333,25 +3386,50 @@ func _build_cleanup_result_overlay() -> PanelContainer:
 	panel.add_child(vb)
 	return panel
 
+func _on_cleanup_detail_bt_pressed() -> void:
+	print('[connect_home]->_on_cleanup_detail_bt_pressed')
+	if not cleanup_waiting_confirm:
+		return
+	_show_cleanup_result_dialog()
+
 func _on_cleanup_result_cancel() -> void:
 	if cleanup_result_overlay:
 		cleanup_result_overlay.call_deferred('set_visible', false)
 
+func _on_cleanup_result_select_all() -> void:
+	for filepath in cleanup_result_checkboxes:
+		var cb:CheckBox = cleanup_result_checkboxes[filepath]
+		cb.button_pressed = true
+
+func _on_cleanup_result_select_none() -> void:
+	for filepath in cleanup_result_checkboxes:
+		var cb:CheckBox = cleanup_result_checkboxes[filepath]
+		cb.button_pressed = false
+
 func _on_cleanup_result_confirm() -> void:
 	if cleanup_result_overlay:
 		cleanup_result_overlay.call_deferred('set_visible', false)
-	cleanup__start_delete_files()
+	var selected:Array = []
+	for filepath in cleanup_result_checkboxes:
+		var cb:CheckBox = cleanup_result_checkboxes[filepath]
+		if cb.button_pressed:
+			selected.append(filepath)
+	if selected.size() <= 0:
+		show_main_log('未选择任何文件!')
+		return
+	cleanup__start_delete_files(selected)
 
-func cleanup__start_delete_files() -> void:
-	print('[connect_home]->cleanup__start_delete_files, %s 个'%cleanup_deletable.size())
+func cleanup__start_delete_files(selected:Array) -> void:
+	print('[connect_home]->cleanup__start_delete_files, %s 个'%selected.size())
 	cleanup_busy = true
+	cleanup_waiting_confirm = false
 	if cleanup_detail_bt:
+		cleanup_detail_bt.icon = _create_spinner_texture()
 		cleanup_detail_bt.rotation = 0
 		cleanup_detail_bt.visible = true
 	show_main_log('正在删除手机侧文件...')
 	var success_cnt:int = 0
-	for cand in cleanup_deletable:
-		var filepath:String = cand['filepath']
+	for filepath in selected:
 		print('[connect_home]->cleanup__start_delete_files:delete %s'%filepath)
 		if FileAccess.file_exists(filepath):
 			DirAccess.remove_absolute(filepath)
@@ -3363,12 +3441,13 @@ func cleanup__start_delete_files() -> void:
 	task_dic[taskid] = _obj
 	var f_table:Dictionary = _obj.read_db().get('all_files_dic', {})
 	var d_table:Dictionary = _obj.read_db().get('rename_files_dic', {})
-	for cand in cleanup_deletable:
-		var eachfile:String = cand['filepath']
-		if eachfile in f_table:
-			f_table[eachfile]['on_ue'] = 'no'
+	for filepath in selected:
+		if filepath in f_table:
+			f_table[filepath]['on_ue'] = 'no'
 	_obj.write_db({'all_files_dic': f_table, 'rename_files_dic': d_table})
 	_obj._destory()
+	cleanup_deletable = []
+	cleanup_result_checkboxes = {}
 	cleanup__finish_busy()
 	show_main_log('清理完成, 删除 %s 个文件'%success_cnt)
 	update_and_show_files()
@@ -3666,10 +3745,13 @@ func _end_pressed() -> void:
 		
 func _process(_del)	-> void:
 	if upload_detail_bt and upload_detail_bt.visible:
+		upload_detail_bt.pivot_offset = upload_detail_bt.size / 2.0
 		upload_detail_bt.rotation += _del * 5.0
 	if scan_detail_bt and scan_detail_bt.visible:
+		scan_detail_bt.pivot_offset = scan_detail_bt.size / 2.0
 		scan_detail_bt.rotation += _del * 5.0
-	if cleanup_detail_bt and cleanup_detail_bt.visible:
+	if cleanup_detail_bt and cleanup_detail_bt.visible and not cleanup_waiting_confirm:
+		cleanup_detail_bt.pivot_offset = cleanup_detail_bt.size / 2.0
 		cleanup_detail_bt.rotation += _del * 5.0
 	for taskid in clear_dic:
 		if Time.get_ticks_msec() - clear_dic[taskid]['time'] > 1000 * 1:
