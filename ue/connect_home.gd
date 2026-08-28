@@ -50,6 +50,7 @@ var scroll_container:ScrollContainer = null
 var scan_bt:Button = null
 var upload_bt:Button = null
 var delete_bt:Button = null
+var login_bt:Button = null
 
 ## cfg of show
 var logs_show:Label = null
@@ -223,14 +224,14 @@ func build_gui() -> void:
 	var vbox_top:VBoxContainer = VBoxContainer.new()
 	vbox_top.name = 'TOP'
 	vbox_top.size = win_size
-	vbox_top.position = Vector2i(50, 50)
+	vbox_top.position = Vector2i(50, 100)
 	
 	var hbox_l0:HBoxContainer = HBoxContainer.new()
 	hbox_l0.name = 'title'
 	var app_title_label:Label = Label.new()
 	app_title_label.text = '文件回家 V0.4.3'
 	app_title_label.size = Vector2i(win_size.x, 50)
-	app_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	app_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	app_title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	app_title_label.label_settings = label_setting_font_60
 	hbox_l0.add_child(app_title_label)
@@ -255,7 +256,7 @@ func build_gui() -> void:
 	upload_detail_bt.visible = false
 	upload_detail_bt.tooltip_text = '查看上传详情'
 	upload_detail_bt.pressed.connect(_on_upload_detail_bt_pressed)
-	hbox_l0_1.add_child(upload_detail_bt)
+	hbox_l0.add_child(upload_detail_bt)
 	scan_detail_bt = Button.new()
 	scan_detail_bt.name = 'scan_detail_bt'
 	scan_detail_bt.flat = true
@@ -266,7 +267,7 @@ func build_gui() -> void:
 	scan_detail_bt.visible = false
 	scan_detail_bt.tooltip_text = '查看扫描详情'
 	scan_detail_bt.pressed.connect(_on_scan_detail_bt_pressed)
-	hbox_l0_1.add_child(scan_detail_bt)
+	hbox_l0.add_child(scan_detail_bt)
 	cleanup_detail_bt = Button.new()
 	cleanup_detail_bt.name = 'cleanup_detail_bt'
 	cleanup_detail_bt.flat = true
@@ -276,7 +277,7 @@ func build_gui() -> void:
 	cleanup_detail_bt.pivot_offset = Vector2(20, 20)
 	cleanup_detail_bt.visible = false
 	cleanup_detail_bt.tooltip_text = '正在清理'
-	hbox_l0_1.add_child(cleanup_detail_bt)
+	hbox_l0.add_child(cleanup_detail_bt)
 	
 	var hbox_l0_2:HBoxContainer = HBoxContainer.new()
 	hbox_l0_2.name = 'logs_show_details'
@@ -344,12 +345,13 @@ func build_gui() -> void:
 	vbox_top.add_child(vbox_l3)
 	
 	### L1
-	var login_bt:Button = Button.new()
+	login_bt = Button.new()
 	login_bt.text = '登录'
 	login_bt.name = 'login_bt'
 	type_display_style(login_bt, DEFAULT_FONT_SIZE)
+	login_bt.custom_minimum_size = Vector2(100, 50)
 	login_bt.connect("pressed", _on_login_bt_pressed)
-	hbox_l1.add_child(login_bt)
+	hbox_l0.add_child(login_bt)
 	
 	scan_bt = Button.new()
 	scan_bt.text = '扫描文件'
@@ -1196,7 +1198,6 @@ upload_port_input:LineEdit, download_port_input:LineEdit, usr_input:LineEdit, ps
 	PSD = psd_input.text
 	save_cfg()
 	save_cfg_bt.text = '登录&保存配置'
-	var login_bt:Button = hbox_l1.get_child(0)
 	login_bt.text = USR
 	_on_login_bt_pressed()
 	update_and_show_files()
