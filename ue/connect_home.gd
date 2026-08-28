@@ -110,6 +110,13 @@ var download_progress_bar:ProgressBar = null
 var download_progress_label:Label = null
 var cleanup_overlay:PanelContainer = null
 var cleanup_days:int = 30
+var cleanup_detail_bt:Button = null
+var cleanup_busy:bool = false
+var cleanup_candidates:Array = []
+var cleanup_deletable:Array = []
+var cleanup_backup_local_files_txt:String = ''
+var cleanup_result_overlay:PanelContainer = null
+var cleanup_result_list:VBoxContainer = null
 var upload_batch_overlay:PanelContainer = null
 var upload_batch_limit_input:LineEdit = null
 var scan_dir_select_overlay:PanelContainer = null
@@ -260,6 +267,16 @@ func build_gui() -> void:
 	scan_detail_bt.tooltip_text = '查看扫描详情'
 	scan_detail_bt.pressed.connect(_on_scan_detail_bt_pressed)
 	hbox_l0_1.add_child(scan_detail_bt)
+	cleanup_detail_bt = Button.new()
+	cleanup_detail_bt.name = 'cleanup_detail_bt'
+	cleanup_detail_bt.flat = true
+	cleanup_detail_bt.icon = _create_spinner_texture()
+	cleanup_detail_bt.expand_icon = true
+	cleanup_detail_bt.custom_minimum_size = Vector2(40, 40)
+	cleanup_detail_bt.pivot_offset = Vector2(20, 20)
+	cleanup_detail_bt.visible = false
+	cleanup_detail_bt.tooltip_text = '正在清理'
+	hbox_l0_1.add_child(cleanup_detail_bt)
 	
 	var hbox_l0_2:HBoxContainer = HBoxContainer.new()
 	hbox_l0_2.name = 'logs_show_details'
@@ -1284,6 +1301,9 @@ func _on_upload_bt_pressed() -> void:
 ### query_files -> delete_files -> push_files_table -> update_and_show_files
 func _on_delete_bt_pressed() -> void:
 	print('[connect_home]->_on_delete_bt_pressed')
+	if cleanup_busy:
+		show_main_log('清理正在进行中, 请稍候!')
+		return
 	_show_cleanup_dialog()
 
 func _show_cleanup_dialog() -> void:
@@ -1378,7 +1398,7 @@ func _on_cleanup_confirm() -> void:
 		var days:int = days_input.text.to_int()
 		if days <= 0:
 			days = UE_SAVE_TIME
-		cleanup__start_query_files(days)
+		cleanup__start_cleanup(days)
 
 func _show_upload_batch_dialog() -> void:
 	var wsize:Vector2 = Vector2(DisplayServer.window_get_size())
@@ -1757,13 +1777,13 @@ func _on_are2d_input(vp:Node, evt:InputEvent, si:int, filepath:String, _texture_
 		texture_touch_dic = {'filepath': filepath, 'fullpath': full_path, 'pos': evt.position}
 
 func open_a_file(filepath:String) -> void:
-	if not FileAccess.file_exists(filepath):
-		_show_download_confirm_dialog(filepath)
+	var full_path:String = filepath
+	if not FileAccess.file_exists(full_path):
+		full_path = UE_ROOT_DIR.path_join(filepath)
+	if not FileAccess.file_exists(full_path):
+		_show_download_confirm_dialog(full_path)
 		return
-	if FileAccess.file_exists(filepath):
-		open_a_file_now(filepath)
-	else:
-		show_main_log('文件不存在!')
+	open_a_file_now(full_path)
 
 func open_a_file_now(_filepath:String) -> void:
 	if OS.get_name() != 'Android':
@@ -2125,7 +2145,7 @@ func _show_download_confirm_dialog(filepath:String) -> void:
 		if db:
 			var all_files = db.get('all_files_dic', {})
 			for key in all_files:
-				if all_files[key].get('ue_dir', '') == filepath:
+				if key == filepath or all_files[key].get('ue_dir', '') == filepath:
 					filesize = all_files[key].get('filesize', 0)
 					break
 	var size_text:String = _format_size(filesize)
@@ -3065,19 +3085,23 @@ func upload__end_query_files_dic(who_i_am:String, taskid:String, req_type:String
 	else:
 		print("[connect_home]->upload__end_query_files_dic:error message:%s, %s"%[req_type, result])
 
-func cleanup__start_query_files(days:int) -> void:
-	print('[connect_home]->cleanup__start_query_files, days:%s'%days)
+func cleanup__start_cleanup(days:int) -> void:
+	print('[connect_home]->cleanup__start_cleanup, days:%s'%days)
 	cleanup_days = days
-	show_main_log('正在查询服务器文件列表...')
-	var taskid:String = generate_task_id()
-	var _obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
-	task_dic[taskid] = _obj
-	_obj.connect("report_result", cleanup__end_query_files.bind(taskid, _obj))
-	var querydic:Dictionary = {}
+	cleanup_candidates = []
+	cleanup_deletable = []
+	cleanup_busy = true
+	if cleanup_detail_bt:
+		cleanup_detail_bt.rotation = 0
+		cleanup_detail_bt.visible = true
+	show_main_log('正在查询 %s 天以前的可清理文件...'%days)
+	## 步骤2: 根据本地 files.txt, 找时间节点以前的文件列表
+	var now_time:int = Time.get_unix_time_from_system()
 	var f = FileAccess.open(UE_ROOT_DIR.path_join('files.txt'), FileAccess.READ)
 	if f:
-		var db = JSON.parse_string(f.get_as_text())
+		cleanup_backup_local_files_txt = f.get_as_text()
 		f.close()
+		var db = JSON.parse_string(cleanup_backup_local_files_txt)
 		if db:
 			var all_files:Dictionary = db.get('all_files_dic', {})
 			for eachf in all_files:
@@ -3085,13 +3109,94 @@ func cleanup__start_query_files(days:int) -> void:
 					continue
 				if not FileAccess.file_exists(eachf):
 					continue
-				var filename:String = eachf
-				if UE_ROOT_DIR + '/' in eachf:
-					filename = eachf.replace(UE_ROOT_DIR + '/', '')
-				elif UE_ROOT_DIR in eachf:
-					filename = eachf.replace(UE_ROOT_DIR, '')
-				querydic[filename] = FileAccess.get_md5(eachf)
-	_obj.query_files(querydic)
+				var modtime:int = all_files[eachf].get('modtime', 0)
+				if now_time - modtime > days * 86400:
+					cleanup_candidates.append({
+						'filepath': eachf,
+						'md5': all_files[eachf].get('md5', ''),
+						'filesize': all_files[eachf].get('filesize', 0),
+						'modtime': modtime,
+						'filename': all_files[eachf].get('filename', eachf.get_file()),
+					})
+	if cleanup_candidates.size() <= 0:
+		show_main_log('没有 %s 天以前的可清理文件'%days)
+		cleanup__finish_busy()
+		return
+	print('[connect_home]->cleanup__start_cleanup: 本地候选 %s 个'%cleanup_candidates.size())
+	## 步骤3: 下载服务器 files.txt 用于信息比对
+	var taskid:String = generate_task_id()
+	var _obj = TCP_TRANSF_C.new(log_window, taskid, UE_ROOT_DIR, SERVER_IP, DOWNLOAD_PORT, USR, PSD, 3, 'yes')
+	task_dic[taskid] = _obj
+	_obj.connect("report_result", cleanup__end_pull_sv_files_table.bind(taskid, _obj))
+	_obj.download_a_file(UE_ROOT_DIR.path_join('files.txt'))
+
+func cleanup__end_pull_sv_files_table(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
+	print("[connect_home]->cleanup__end_pull_sv_files_table:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
+	if who_i_am == 'tcp_transf_class' and taskid == _taskid and req_type == 'download':
+		if result in ['FINISH', 'ERROR7']:
+			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
+			## 读取服务器版 files.txt(刚下载覆盖到本地)
+			var sv_files_dic:Dictionary = {}
+			var f = FileAccess.open(UE_ROOT_DIR.path_join('files.txt'), FileAccess.READ)
+			if f:
+				var sv_db = JSON.parse_string(f.get_as_text())
+				f.close()
+				if sv_db:
+					sv_files_dic = sv_db.get('all_files_dic', {})
+			## 恢复本地 files.txt(下载时被覆盖, 写回备份)
+			_cleanup_restore_local_files_txt()
+			## 步骤3: 服务器 files.txt 中信息与本地完全一致才保留
+			var ok_list:Array = []
+			for cand in cleanup_candidates:
+				var sv_infor = sv_files_dic.get(cand['filepath'], {})
+				if sv_infor is Dictionary and sv_infor.get('md5', '') == cand['md5']:
+					ok_list.append(cand)
+			cleanup_candidates = ok_list
+			if cleanup_candidates.size() <= 0:
+				show_main_log('服务器文件列表与本地不一致, 无可清理文件')
+				cleanup__finish_busy()
+				return
+			print('[connect_home]->cleanup__end_pull_sv_files_table: 服务器信息一致 %s 个'%cleanup_candidates.size())
+			## 步骤4: 到服务器侧查询这些文件, 确保文件存在且 md5 相同
+			var querydic:Dictionary = {}
+			for cand in cleanup_candidates:
+				querydic[_cleanup_rel_path(cand['filepath'])] = cand['md5']
+			var query_taskid:String = generate_task_id()
+			var _obj2 = TCP_TRANSF_C.new(log_window, query_taskid, UE_ROOT_DIR, SERVER_IP, UPLOAD_PORT, USR, PSD, 3, 'no')
+			task_dic[query_taskid] = _obj2
+			_obj2.connect("report_result", cleanup__end_query_files.bind(query_taskid, _obj2))
+			_obj2.query_files(querydic)
+		elif result == 'FAILED':
+			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
+			_cleanup_restore_local_files_txt()
+			show_main_log('拉取服务器文件列表失败!')
+			cleanup__finish_busy()
+		else:
+			print('[connect_home]->cleanup__end_pull_sv_files_table, error result:%s, %s'%[req_type, result])
+		show_sub_log()
+	else:
+		print('[connect_home]->cleanup__end_pull_sv_files_table, error message:%s, %s'%[req_type, result])
+
+func _cleanup_rel_path(filepath:String) -> String:
+	if UE_ROOT_DIR + '/' in filepath:
+		return filepath.replace(UE_ROOT_DIR + '/', '')
+	if UE_ROOT_DIR in filepath:
+		return filepath.replace(UE_ROOT_DIR, '')
+	return filepath
+
+func _cleanup_restore_local_files_txt() -> void:
+	if cleanup_backup_local_files_txt == '':
+		return
+	var f = FileAccess.open(UE_ROOT_DIR.path_join('files.txt'), FileAccess.WRITE)
+	if f:
+		f.store_string(cleanup_backup_local_files_txt)
+		f.close()
+	cleanup_backup_local_files_txt = ''
+
+func cleanup__finish_busy() -> void:
+	cleanup_busy = false
+	if cleanup_detail_bt:
+		cleanup_detail_bt.call_deferred('set_visible', false)
 
 func cleanup__end_query_files(who_i_am:String, taskid:String, req_type:String, infor:String, result:String, _taskid:String, _obj:TCP_TRANSF_C) -> void:
 	print("[connect_home]->cleanup__end_query_files:%s-%s %s %s %s, %s"%[who_i_am, taskid, req_type, infor, result, _taskid])
@@ -3101,40 +3206,172 @@ func cleanup__end_query_files(who_i_am:String, taskid:String, req_type:String, i
 			var need_upload_list:Array = []
 			if infor != 'all ok':
 				need_upload_list = infor.split(';')
-			var deletable_list:Array = []
-			var now_time:int = Time.get_unix_time_from_system()
-			var f = FileAccess.open(UE_ROOT_DIR.path_join('files.txt'), FileAccess.READ)
-			if f:
-				var db = JSON.parse_string(f.get_as_text())
-				f.close()
-				if db:
-					var all_files:Dictionary = db.get('all_files_dic', {})
-					for eachf in all_files:
-						if all_files[eachf].get('on_ue', 'no') != 'yes':
-							continue
-						var filename:String = eachf
-						if UE_ROOT_DIR + '/' in eachf:
-							filename = eachf.replace(UE_ROOT_DIR + '/', '')
-						elif UE_ROOT_DIR in eachf:
-							filename = eachf.replace(UE_ROOT_DIR, '')
-						if filename in need_upload_list:
-							continue
-						var modtime:int = all_files[eachf].get('modtime', now_time)
-						if now_time - modtime > cleanup_days * 86400:
-							deletable_list.append(eachf)
-			print('[connect_home]->cleanup__end_query_files: 可删除文件(服务器已有, %s天前): %s个'%[cleanup_days, deletable_list.size()])
-			for eachf in deletable_list:
-				print('[connect_home]->cleanup__end_query_files: 可删除: %s'%eachf)
-			show_main_log('可删除:%s个文件, 已打印'%deletable_list.size())
+			## 步骤4结果: 服务器缺失或 md5 不一致的剔除
+			cleanup_deletable = []
+			for cand in cleanup_candidates:
+				if _cleanup_rel_path(cand['filepath']) not in need_upload_list:
+					cleanup_deletable.append(cand)
+			## 步骤5: 按创建时间正序
+			cleanup_deletable.sort_custom(func(a, b): return a['modtime'] < b['modtime'])
+			cleanup__finish_busy()
+			if cleanup_deletable.size() <= 0:
+				show_main_log('没有可清理的文件')
+				return
+			show_main_log('查询完成, 可清理 %s 个文件'%cleanup_deletable.size())
+			_show_cleanup_result_dialog()
 		elif result == 'FAILED':
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
-			show_main_log('查询服务器文件列表失败!')
-			print("[connect_home]->cleanup__end_query_files:failed!!!!!!!!!!!")
+			cleanup__finish_busy()
+			show_main_log('查询服务器文件失败!')
 		else:
 			print("[connect_home]->cleanup__end_query_files:error result:%s, %s"%[req_type, result])
 		show_sub_log()
 	else:
 		print("[connect_home]->cleanup__end_query_files:error message:%s, %s"%[req_type, result])
+
+func _show_cleanup_result_dialog() -> void:
+	var wsize:Vector2 = Vector2(DisplayServer.window_get_size())
+	if cleanup_result_overlay == null:
+		cleanup_result_overlay = _build_cleanup_result_overlay()
+		add_child(cleanup_result_overlay)
+	for child in cleanup_result_list.get_children():
+		child.queue_free()
+	cleanup_result_overlay.get_node('VBoxContainer/title_label').text = '可清理文件(%s个):'%cleanup_deletable.size()
+	for cand in cleanup_deletable:
+		var row:HBoxContainer = HBoxContainer.new()
+		row.add_theme_constant_override('separation', 10)
+		var name_lb:Label = Label.new()
+		name_lb.text = cand['filename']
+		name_lb.add_theme_font_size_override('font_size', 20)
+		name_lb.add_theme_color_override('font_color', Color.BLACK)
+		name_lb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_lb.custom_minimum_size = Vector2(220, 0)
+		name_lb.clip_text = true
+		var size_lb:Label = Label.new()
+		size_lb.text = _format_size(int(cand['filesize']))
+		size_lb.add_theme_font_size_override('font_size', 20)
+		size_lb.add_theme_color_override('font_color', Color(0.3, 0.3, 0.3, 1.0))
+		size_lb.custom_minimum_size = Vector2(110, 0)
+		var time_lb:Label = Label.new()
+		time_lb.text = Time.get_datetime_string_from_unix_time(cand['modtime'])
+		time_lb.add_theme_font_size_override('font_size', 20)
+		time_lb.add_theme_color_override('font_color', Color(0.3, 0.3, 0.3, 1.0))
+		time_lb.custom_minimum_size = Vector2(180, 0)
+		row.add_child(name_lb)
+		row.add_child(size_lb)
+		row.add_child(time_lb)
+		cleanup_result_list.add_child(row)
+	cleanup_result_overlay.reset_size()
+	var dsize:Vector2 = cleanup_result_overlay.size
+	if dsize.x <= 1 or dsize.y <= 1:
+		dsize = cleanup_result_overlay.custom_minimum_size
+	cleanup_result_overlay.position = Vector2((wsize.x - dsize.x) / 2.0, (wsize.y - dsize.y) / 2.0 - 60.0)
+	cleanup_result_overlay.size = dsize
+	cleanup_result_overlay.visible = true
+
+func _build_cleanup_result_overlay() -> PanelContainer:
+	var panel:PanelContainer = PanelContainer.new()
+	panel.name = 'cleanup_result_overlay'
+	panel.z_index = 120
+	panel.visible = false
+	var sb:StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = Color(0.95, 0.95, 0.95, 0.98)
+	sb.set_corner_radius_all(12)
+	sb.set_border_width_all(2)
+	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.content_margin_left = 20.0
+	sb.content_margin_right = 20.0
+	sb.content_margin_top = 16.0
+	sb.content_margin_bottom = 16.0
+	panel.add_theme_stylebox_override('panel', sb)
+	var vb:VBoxContainer = VBoxContainer.new()
+	vb.name = 'VBoxContainer'
+	vb.add_theme_constant_override('separation', 12)
+	var title_label:Label = Label.new()
+	title_label.name = 'title_label'
+	title_label.text = '可清理文件:'
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_label.add_theme_font_size_override('font_size', 30)
+	title_label.add_theme_color_override('font_color', Color.BLACK)
+	var tip_label:Label = Label.new()
+	tip_label.text = '删除手机侧文件, 服务器仍保留备份'
+	tip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tip_label.add_theme_font_size_override('font_size', 18)
+	tip_label.add_theme_color_override('font_color', Color(0.3, 0.3, 0.3, 1.0))
+	var scroll:ScrollContainer = ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(640, 420)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	cleanup_result_list = VBoxContainer.new()
+	cleanup_result_list.name = 'cleanup_list'
+	cleanup_result_list.add_theme_constant_override('separation', 8)
+	cleanup_result_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(cleanup_result_list)
+	var sep:HSeparator = HSeparator.new()
+	var hb:HBoxContainer = HBoxContainer.new()
+	hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	hb.add_theme_constant_override('separation', 30)
+	var cancel_bt:Button = Button.new()
+	cancel_bt.text = '取消'
+	cancel_bt.add_theme_font_size_override('font_size', 24)
+	cancel_bt.add_theme_color_override('font_color', Color.BLACK)
+	cancel_bt.custom_minimum_size = Vector2(140, 50)
+	cancel_bt.pressed.connect(_on_cleanup_result_cancel)
+	var confirm_bt:Button = Button.new()
+	confirm_bt.text = '确认删除'
+	confirm_bt.add_theme_font_size_override('font_size', 24)
+	confirm_bt.add_theme_color_override('font_color', Color.BLACK)
+	confirm_bt.custom_minimum_size = Vector2(140, 50)
+	confirm_bt.pressed.connect(_on_cleanup_result_confirm)
+	hb.add_child(cancel_bt)
+	hb.add_child(confirm_bt)
+	vb.add_child(title_label)
+	vb.add_child(tip_label)
+	vb.add_child(scroll)
+	vb.add_child(sep)
+	vb.add_child(hb)
+	panel.add_child(vb)
+	return panel
+
+func _on_cleanup_result_cancel() -> void:
+	if cleanup_result_overlay:
+		cleanup_result_overlay.call_deferred('set_visible', false)
+
+func _on_cleanup_result_confirm() -> void:
+	if cleanup_result_overlay:
+		cleanup_result_overlay.call_deferred('set_visible', false)
+	cleanup__start_delete_files()
+
+func cleanup__start_delete_files() -> void:
+	print('[connect_home]->cleanup__start_delete_files, %s 个'%cleanup_deletable.size())
+	cleanup_busy = true
+	if cleanup_detail_bt:
+		cleanup_detail_bt.rotation = 0
+		cleanup_detail_bt.visible = true
+	show_main_log('正在删除手机侧文件...')
+	var success_cnt:int = 0
+	for cand in cleanup_deletable:
+		var filepath:String = cand['filepath']
+		print('[connect_home]->cleanup__start_delete_files:delete %s'%filepath)
+		if FileAccess.file_exists(filepath):
+			DirAccess.remove_absolute(filepath)
+			success_cnt += 1
+	## 更新本地 files.txt: 已删除的文件 on_ue = 'no'
+	var taskid:String = generate_task_id()
+	var _obj = SCAN_C.new(log_window, taskid, UE_ROOT_DIR.path_join('files.txt'), UE_ROOT_DIR, SCAN_DIR_DIC,
+	DIS_FILE_TYPE, EXT_TYPE_DIC, ICON_DIR)
+	task_dic[taskid] = _obj
+	var f_table:Dictionary = _obj.read_db().get('all_files_dic', {})
+	var d_table:Dictionary = _obj.read_db().get('rename_files_dic', {})
+	for cand in cleanup_deletable:
+		var eachfile:String = cand['filepath']
+		if eachfile in f_table:
+			f_table[eachfile]['on_ue'] = 'no'
+	_obj.write_db({'all_files_dic': f_table, 'rename_files_dic': d_table})
+	_obj._destory()
+	cleanup__finish_busy()
+	show_main_log('清理完成, 删除 %s 个文件'%success_cnt)
+	update_and_show_files()
+	upload__start_push_files_table()
 
 func upload__update_files_table_after_upload() -> void:
 	print("[connect_home]->upload__update_files_table_after_upload start")
@@ -3431,6 +3668,8 @@ func _process(_del)	-> void:
 		upload_detail_bt.rotation += _del * 5.0
 	if scan_detail_bt and scan_detail_bt.visible:
 		scan_detail_bt.rotation += _del * 5.0
+	if cleanup_detail_bt and cleanup_detail_bt.visible:
+		cleanup_detail_bt.rotation += _del * 5.0
 	for taskid in clear_dic:
 		if Time.get_ticks_msec() - clear_dic[taskid]['time'] > 1000 * 1:
 			if clear_dic[taskid]['obj'] != null:
