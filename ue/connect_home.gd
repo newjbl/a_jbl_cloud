@@ -76,6 +76,12 @@ var search_key:String = ''
 var display_file_dic:Dictionary = {}
 var need_clear_ui:bool = false
 var need_update_ui:bool = false
+var stat_cloud_label:Label = null
+var stat_both_label:Label = null
+var stat_ue_label:Label = null
+var files_time_label:Label = null
+var last_upload_time_str:String = ''
+var last_scan_time_str:String = ''
 
 ## steps dic
 var scan_file_rt:Dictionary = {}
@@ -347,6 +353,27 @@ func build_gui() -> void:
 	vbox_top.add_child(vbox_l1_1_login)
 	vbox_top.add_child(vbox_l1_2_setting)
 	vbox_top.add_child(vbox_l1_3_uploadlist)
+	## 状态行1: 文件数量(图标+文字)
+	var hbox_stat:HBoxContainer = HBoxContainer.new()
+	hbox_stat.name = 'files_stat_row'
+	hbox_stat.alignment = BoxContainer.ALIGNMENT_CENTER
+	hbox_stat.add_theme_constant_override('separation', 30)
+	stat_cloud_label = _build_stat_item(hbox_stat, 'res://db/on_server.png')
+	stat_both_label = _build_stat_item(hbox_stat, 'res://db/on_server.png', 'res://db/on_ue.png')
+	stat_ue_label = _build_stat_item(hbox_stat, 'res://db/on_ue.png')
+	vbox_top.add_child(hbox_stat)
+	## 状态行2: 最后上传/扫描时间
+	var hbox_time:HBoxContainer = HBoxContainer.new()
+	hbox_time.name = 'files_time_row'
+	files_time_label = Label.new()
+	files_time_label.name = 'files_time_label'
+	files_time_label.text = ''
+	files_time_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	files_time_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	files_time_label.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	files_time_label.add_theme_color_override('font_color', Color.BLACK)
+	hbox_time.add_child(files_time_label)
+	vbox_top.add_child(hbox_time)
 	vbox_top.add_child(hbox_l2)
 	vbox_top.add_child(vbox_l3)
 	
@@ -942,7 +969,37 @@ func build_gui() -> void:
 	add_child(menu_overlay)
 	details_overlay = _build_details_overlay()
 	add_child(details_overlay)
-	
+	_scale_popup(menu_overlay)
+	_scale_popup(details_overlay)
+	_set_all_black(vbox_l1_2_setting)
+
+func _set_all_black(node:Node) -> void:
+	for child in node.get_children():
+		if child is Label or child is Button or child is CheckBox or child is LineEdit or child is OptionButton:
+			child.add_theme_color_override('font_color', Color.BLACK)
+		_set_all_black(child)
+
+func _scale_popup(node:Node, factor:float = 2.0) -> void:
+	var ws:Vector2 = Vector2(DisplayServer.window_get_size())
+	for child in node.get_children():
+		if child is Control:
+			var cs:Vector2 = child.custom_minimum_size
+			if cs.x > 0 or cs.y > 0:
+				var ns:Vector2 = cs * factor
+				ns.x = minf(ns.x, ws.x - 80.0)
+				ns.y = minf(ns.y, ws.y - 80.0)
+				child.custom_minimum_size = ns
+			if child is Label or child is Button or child is CheckBox or child is LineEdit or child is OptionButton:
+				var fs:int = child.get_theme_font_size('font_size')
+				if fs > 0:
+					child.add_theme_font_size_override('font_size', int(fs * factor))
+				child.add_theme_color_override('font_color', Color.BLACK)
+		_scale_popup(child, factor)
+
+func _clamp_popup_pos(wsize:Vector2, dsize:Vector2) -> Vector2:
+	var px:float = clampf((wsize.x - dsize.x) / 2.0, 0.0, maxf(0.0, wsize.x - dsize.x))
+	var py:float = clampf((wsize.y - dsize.y) / 2.0 - 60.0, 0.0, maxf(0.0, wsize.y - dsize.y))
+	return Vector2(px, py)
 func add_one_block(idx:int, timek:String, block_dic:Array) -> void:
 	print('[connect_home]->add_one_block')
 	var s:int = (win_size.x - 10) / 3
@@ -1090,11 +1147,67 @@ func update_and_show_files_thread() -> void:
 	var f_table:Dictionary = _obj.read_db().get('all_files_dic', {})
 	display_file_dic = sort_files_by_method_duration(f_table)
 	get_dis_sidx_list()
+	_refresh_files_stat(f_table)
 	#call_deferred('clear_ui')
 	#call_deferred('update_ui', file_dic)
 	need_update_ui = true
 	_obj._destory()
 	#print('[connect_home]->update_and_show_files_thread:thread_finish:%s'%[display_file_dic.size()])
+
+func _now_time_str() -> String:
+	var dt:Dictionary = Time.get_datetime_dict_from_unix_time(Time.get_unix_time_from_system())
+	return '%s-%s-%s %s:%s:%s'%[dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second]
+
+func _build_stat_item(parent:HBoxContainer, icon1:String, icon2:String = '') -> Label:
+	var item:HBoxContainer = HBoxContainer.new()
+	item.add_theme_constant_override('separation', 4)
+	var rec:TextureRect = TextureRect.new()
+	rec.custom_minimum_size = Vector2i(28, 28)
+	rec.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rec.texture = load(icon1)
+	item.add_child(rec)
+	if icon2 != '':
+		var rec2:TextureRect = TextureRect.new()
+		rec2.custom_minimum_size = Vector2i(28, 28)
+		rec2.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		rec2.texture = load(icon2)
+		item.add_child(rec2)
+	var lb:Label = Label.new()
+	lb.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
+	lb.add_theme_color_override('font_color', Color.BLACK)
+	item.add_child(lb)
+	parent.add_child(item)
+	return lb
+
+func _refresh_files_stat(f_table:Dictionary) -> void:
+	if stat_cloud_label == null or files_time_label == null:
+		return
+	var cloud_cnt:int = 0
+	var cloud_size:int = 0
+	var both_cnt:int = 0
+	var both_size:int = 0
+	var ue_cnt:int = 0
+	var ue_size:int = 0
+	for eachf in f_table:
+		var info:Dictionary = f_table[eachf]
+		var on_server:String = info.get('on_server', 'no')
+		var on_ue:String = info.get('on_ue', 'no')
+		var size:int = int(info.get('filesize', 0))
+		if on_server == 'yes' and on_ue == 'yes':
+			both_cnt += 1
+			both_size += size
+		elif on_server == 'yes':
+			cloud_cnt += 1
+			cloud_size += size
+		elif on_ue == 'yes':
+			ue_cnt += 1
+			ue_size += size
+	var up_t:String = last_upload_time_str if last_upload_time_str != '' else '未上传'
+	var sc_t:String = last_scan_time_str if last_scan_time_str != '' else '未扫描'
+	stat_cloud_label.call_deferred('set_text', '云:%s个(%s)'%[cloud_cnt, _format_size(cloud_size)])
+	stat_both_label.call_deferred('set_text', '云+机:%s个(%s)'%[both_cnt, _format_size(both_size)])
+	stat_ue_label.call_deferred('set_text', '机:%s个(%s)'%[ue_cnt, _format_size(ue_size)])
+	files_time_label.call_deferred('set_text', '最后上传:%s  最后扫描:%s'%[up_t, sc_t])
 
 func get_dis_sidx_list() -> void:
 	dis_sidx_list = []
@@ -1244,7 +1357,7 @@ func _on_setting_save_bt_pressed(setting_save_bt:Button) -> void:
 	print('[connect_home]->_on_setting_save_bt_pressed:%s, %s, %s, %s, %s'%[JSON.stringify(SCAN_DIR_DIC), DIS_SIZE, '~'.join(DIS_DURATION),
 	SORT_METHOD, UE_SAVE_TIME])
 	save_setting()	
-	setting_save_bt.add_theme_color_override('font_color', Color(0.0, 1.0, 0.0, 1.0))
+	setting_save_bt.add_theme_color_override('font_color', Color.BLACK)
 	_on_setting_bt_pressed()
 	update_and_show_files()
 
@@ -1318,12 +1431,13 @@ func _show_cleanup_dialog() -> void:
 	if cleanup_overlay == null:
 		cleanup_overlay = _build_cleanup_overlay()
 		add_child(cleanup_overlay)
+		_scale_popup(cleanup_overlay)
 	cleanup_overlay.get_node('VBoxContainer/days_input').text = '%s'%UE_SAVE_TIME
 	cleanup_overlay.reset_size()
 	var dsize:Vector2 = cleanup_overlay.size
 	if dsize.x <= 1 or dsize.y <= 1:
 		dsize = cleanup_overlay.custom_minimum_size
-	cleanup_overlay.position = Vector2((wsize.x - dsize.x) / 2.0, (wsize.y - dsize.y) / 2.0 - 60.0)
+	cleanup_overlay.position = _clamp_popup_pos(wsize, dsize)
 	cleanup_overlay.size = dsize
 	cleanup_overlay.visible = true
 
@@ -1412,6 +1526,7 @@ func _show_upload_batch_dialog() -> void:
 	if upload_batch_overlay == null:
 		upload_batch_overlay = _build_upload_batch_overlay()
 		add_child(upload_batch_overlay)
+		_scale_popup(upload_batch_overlay)
 	var total:int = upload_dic.get('notuploadyet', 0)
 	upload_batch_overlay.get_node('VBoxContainer/total_label').text = '当前待上传: %s 个文件'%total
 	upload_batch_limit_input.text = '%s'%total
@@ -1419,7 +1534,7 @@ func _show_upload_batch_dialog() -> void:
 	var dsize:Vector2 = upload_batch_overlay.size
 	if dsize.x <= 1 or dsize.y <= 1:
 		dsize = upload_batch_overlay.custom_minimum_size
-	upload_batch_overlay.position = Vector2((wsize.x - dsize.x) / 2.0, (wsize.y - dsize.y) / 2.0 - 60.0)
+	upload_batch_overlay.position = _clamp_popup_pos(wsize, dsize)
 	upload_batch_overlay.size = dsize
 	upload_batch_overlay.visible = true
 
@@ -1530,6 +1645,7 @@ func _show_scan_dir_select_dialog() -> void:
 	if scan_dir_select_overlay == null:
 		scan_dir_select_overlay = _build_scan_dir_select_overlay()
 		add_child(scan_dir_select_overlay)
+		_scale_popup(scan_dir_select_overlay)
 	for child in scan_dir_select_box.get_children():
 		child.queue_free()
 	var dir_list:Array = []
@@ -1553,7 +1669,7 @@ func _show_scan_dir_select_dialog() -> void:
 	var dsize:Vector2 = scan_dir_select_overlay.size
 	if dsize.x <= 1 or dsize.y <= 1:
 		dsize = scan_dir_select_overlay.custom_minimum_size
-	scan_dir_select_overlay.position = Vector2((wsize.x - dsize.x) / 2.0, (wsize.y - dsize.y) / 2.0 - 60.0)
+	scan_dir_select_overlay.position = _clamp_popup_pos(wsize, dsize)
 	scan_dir_select_overlay.size = dsize
 	scan_dir_select_overlay.visible = true
 
@@ -2017,7 +2133,7 @@ func _show_file_details(_filepath:String) -> void:
 	if dsize.x <= 1 or dsize.y <= 1:
 		dsize = details_overlay.custom_minimum_size
 	var wsize:Vector2 = Vector2(DisplayServer.window_get_size())
-	details_overlay.position = Vector2((wsize.x - dsize.x) / 2.0, (wsize.y - dsize.y) / 2.0 - 60.0)
+	details_overlay.position = _clamp_popup_pos(wsize, dsize)
 	details_overlay.size = dsize
 	details_overlay.visible = true
 
@@ -2143,6 +2259,7 @@ func _show_download_confirm_dialog(filepath:String) -> void:
 	if confirm_download_overlay == null:
 		confirm_download_overlay = _build_confirm_download_overlay()
 		add_child(confirm_download_overlay)
+		_scale_popup(confirm_download_overlay)
 	var filesize:int = 0
 	var filename:String = filepath.get_file()
 	var f = FileAccess.open(UE_ROOT_DIR.path_join('files.txt'), FileAccess.READ)
@@ -2163,7 +2280,7 @@ func _show_download_confirm_dialog(filepath:String) -> void:
 	var dsize:Vector2 = confirm_download_overlay.size
 	if dsize.x <= 1 or dsize.y <= 1:
 		dsize = confirm_download_overlay.custom_minimum_size
-	confirm_download_overlay.position = Vector2((wsize.x - dsize.x) / 2.0, (wsize.y - dsize.y) / 2.0 - 60.0)
+	confirm_download_overlay.position = _clamp_popup_pos(wsize, dsize)
 	confirm_download_overlay.size = dsize
 	confirm_download_overlay.visible = true
 
@@ -2241,6 +2358,7 @@ func _show_download_progress(title:String) -> void:
 	if download_progress_overlay == null:
 		download_progress_overlay = _build_download_progress_overlay()
 		add_child(download_progress_overlay)
+		_scale_popup(download_progress_overlay)
 	download_progress_overlay.get_node('VBoxContainer/title_label').text = '下载中: %s' % title
 	download_progress_bar.value = 0
 	download_progress_label.text = '0%'
@@ -2248,7 +2366,7 @@ func _show_download_progress(title:String) -> void:
 	var dsize:Vector2 = download_progress_overlay.size
 	if dsize.x <= 1 or dsize.y <= 1:
 		dsize = download_progress_overlay.custom_minimum_size
-	download_progress_overlay.position = Vector2((wsize.x - dsize.x) / 2.0, (wsize.y - dsize.y) / 2.0 - 60.0)
+	download_progress_overlay.position = _clamp_popup_pos(wsize, dsize)
 	download_progress_overlay.size = dsize
 	download_progress_overlay.visible = true
 
@@ -2372,12 +2490,13 @@ func _show_upload_details_overlay() -> void:
 	if upload_details_overlay == null:
 		upload_details_overlay = _build_upload_details_overlay()
 		add_child(upload_details_overlay)
+		_scale_popup(upload_details_overlay)
 	_refresh_upload_details()
 	upload_details_overlay.reset_size()
 	var dsize:Vector2 = upload_details_overlay.size
 	if dsize.x <= 1 or dsize.y <= 1:
 		dsize = upload_details_overlay.custom_minimum_size
-	upload_details_overlay.position = Vector2((wsize.x - dsize.x) / 2.0, (wsize.y - dsize.y) / 2.0 - 60.0)
+	upload_details_overlay.position = _clamp_popup_pos(wsize, dsize)
 	upload_details_overlay.size = dsize
 	upload_details_overlay.visible = true
 
@@ -2453,18 +2572,18 @@ func _refresh_upload_details() -> void:
 		row.add_theme_constant_override('separation', 10)
 		var name_lb:Label = Label.new()
 		name_lb.text = filepath.get_file()
-		name_lb.add_theme_font_size_override('font_size', 20)
+		name_lb.add_theme_font_size_override('font_size', 40)
 		name_lb.add_theme_color_override('font_color', Color.BLACK)
 		name_lb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		name_lb.custom_minimum_size = Vector2(200, 0)
 		name_lb.clip_text = true
 		var size_lb:Label = Label.new()
-		size_lb.add_theme_font_size_override('font_size', 20)
+		size_lb.add_theme_font_size_override('font_size', 40)
 		size_lb.add_theme_color_override('font_color', Color(0.3, 0.3, 0.3, 1.0))
 		size_lb.text = _format_size(size)
 		size_lb.custom_minimum_size = Vector2(110, 0)
 		var st_lb:Label = Label.new()
-		st_lb.add_theme_font_size_override('font_size', 20)
+		st_lb.add_theme_font_size_override('font_size', 40)
 		st_lb.add_theme_color_override('font_color', Color.BLACK)
 		var pct:int = 0
 		if size > 0:
@@ -2567,9 +2686,9 @@ func load_cfg():
 
 func save_setting() -> void:
 	var setting_infor:String = \
-	"UE_ROOT_DIR:%s\nSCAN_DIR_DIC:%s\nDIS_SIZE:%s\nDIS_DURATION:%s\nSORT_METHOD:%s\nUE_SAVE_TIME:%s\nDIS_FILE_TYPE:%s"\
+	"UE_ROOT_DIR:%s\nSCAN_DIR_DIC:%s\nDIS_SIZE:%s\nDIS_DURATION:%s\nSORT_METHOD:%s\nUE_SAVE_TIME:%s\nDIS_FILE_TYPE:%s\nLAST_UPLOAD_TIME:%s\nLAST_SCAN_TIME:%s"\
 	%[UE_ROOT_DIR, JSON.stringify(SCAN_DIR_DIC), DIS_SIZE, '~'.join(DIS_DURATION), 
-	SORT_METHOD, UE_SAVE_TIME, JSON.stringify(DIS_FILE_TYPE)]
+	SORT_METHOD, UE_SAVE_TIME, JSON.stringify(DIS_FILE_TYPE), last_upload_time_str, last_scan_time_str]
 	var dir:String = SETTING_PATH.get_base_dir()
 	if not DirAccess.dir_exists_absolute(dir):
 		DirAccess.make_dir_absolute(dir)
@@ -2600,6 +2719,10 @@ func load_setting() -> void:
 		UE_SAVE_TIME = cfg_infor.replace('UE_SAVE_TIME:', '').to_int()
 		cfg_infor = f.get_line()
 		DIS_FILE_TYPE = JSON.parse_string(cfg_infor.replace('DIS_FILE_TYPE:', ''))
+		cfg_infor = f.get_line()
+		last_upload_time_str = cfg_infor.replace('LAST_UPLOAD_TIME:', '')
+		cfg_infor = f.get_line()
+		last_scan_time_str = cfg_infor.replace('LAST_SCAN_TIME:', '')
 	else:
 		print('load cfg failed2')
 func generate_task_id() -> String:
@@ -2668,12 +2791,13 @@ func _show_scan_details_overlay() -> void:
 	if scan_details_overlay == null:
 		scan_details_overlay = _build_scan_details_overlay()
 		add_child(scan_details_overlay)
+		_scale_popup(scan_details_overlay)
 	_refresh_scan_details()
 	scan_details_overlay.reset_size()
 	var dsize:Vector2 = scan_details_overlay.size
 	if dsize.x <= 1 or dsize.y <= 1:
 		dsize = scan_details_overlay.custom_minimum_size
-	scan_details_overlay.position = Vector2((wsize.x - dsize.x) / 2.0, (wsize.y - dsize.y) / 2.0 - 60.0)
+	scan_details_overlay.position = _clamp_popup_pos(wsize, dsize)
 	scan_details_overlay.size = dsize
 	scan_details_overlay.visible = true
 
@@ -2789,10 +2913,10 @@ func _add_scan_detail_label(text:String, is_header:bool = false) -> void:
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.clip_text = true
 	if is_header:
-		row.add_theme_font_size_override('font_size', 20)
-		row.add_theme_color_override('font_color', Color(0.0, 0.0, 0.6, 1.0))
+		row.add_theme_font_size_override('font_size', 40)
+		row.add_theme_color_override('font_color', Color.BLACK)
 	else:
-		row.add_theme_font_size_override('font_size', 18)
+		row.add_theme_font_size_override('font_size', 36)
 		row.add_theme_color_override('font_color', Color.BLACK)
 	scan_details_list.add_child(row)
 
@@ -2881,6 +3005,8 @@ func scan__end_scan_files(who_i_am:String, taskid:String, req_type:String, infor
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			show_main_log('扫描文件完成!')
 			scan_phase = '扫描文件完成'
+			last_scan_time_str = _now_time_str()
+			save_setting()
 			_refresh_scan_details_deferred.call_deferred()
 			scan__start_deal_files()
 		elif result == 'FAILED':
@@ -3267,6 +3393,7 @@ func _show_cleanup_result_dialog() -> void:
 	if cleanup_result_overlay == null:
 		cleanup_result_overlay = _build_cleanup_result_overlay()
 		add_child(cleanup_result_overlay)
+		_scale_popup(cleanup_result_overlay)
 	for child in cleanup_result_list.get_children():
 		child.queue_free()
 	cleanup_result_checkboxes = {}
@@ -3276,23 +3403,23 @@ func _show_cleanup_result_dialog() -> void:
 		row.add_theme_constant_override('separation', 10)
 		var cb:CheckBox = CheckBox.new()
 		cb.button_pressed = true
-		cb.add_theme_font_size_override('font_size', 20)
+		cb.add_theme_font_size_override('font_size', 40)
 		cb.custom_minimum_size = Vector2(40, 40)
 		var name_lb:Label = Label.new()
 		name_lb.text = cand['filename']
-		name_lb.add_theme_font_size_override('font_size', 20)
+		name_lb.add_theme_font_size_override('font_size', 40)
 		name_lb.add_theme_color_override('font_color', Color.BLACK)
 		name_lb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		name_lb.custom_minimum_size = Vector2(220, 0)
 		name_lb.clip_text = true
 		var size_lb:Label = Label.new()
 		size_lb.text = _format_size(int(cand['filesize']))
-		size_lb.add_theme_font_size_override('font_size', 20)
+		size_lb.add_theme_font_size_override('font_size', 40)
 		size_lb.add_theme_color_override('font_color', Color(0.3, 0.3, 0.3, 1.0))
 		size_lb.custom_minimum_size = Vector2(110, 0)
 		var time_lb:Label = Label.new()
 		time_lb.text = Time.get_datetime_string_from_unix_time(cand['modtime'])
-		time_lb.add_theme_font_size_override('font_size', 20)
+		time_lb.add_theme_font_size_override('font_size', 40)
 		time_lb.add_theme_color_override('font_color', Color(0.3, 0.3, 0.3, 1.0))
 		time_lb.custom_minimum_size = Vector2(180, 0)
 		row.add_child(cb)
@@ -3305,7 +3432,7 @@ func _show_cleanup_result_dialog() -> void:
 	var dsize:Vector2 = cleanup_result_overlay.size
 	if dsize.x <= 1 or dsize.y <= 1:
 		dsize = cleanup_result_overlay.custom_minimum_size
-	cleanup_result_overlay.position = Vector2((wsize.x - dsize.x) / 2.0, (wsize.y - dsize.y) / 2.0 - 60.0)
+	cleanup_result_overlay.position = _clamp_popup_pos(wsize, dsize)
 	cleanup_result_overlay.size = dsize
 	cleanup_result_overlay.visible = true
 
@@ -3494,6 +3621,8 @@ func upload__end_push_files_table(who_i_am:String, taskid:String, req_type:Strin
 		if result == 'FINISH':
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
 			show_main_log('上传完成!数据状态同步完成!')
+			last_upload_time_str = _now_time_str()
+			save_setting()
 			update_and_show_files()
 		elif result == 'FAILED':
 			clear_dic[taskid] = {'time':Time.get_ticks_msec(), 'obj':_obj}
