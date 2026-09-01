@@ -226,13 +226,13 @@ func type_display_style(a, font_size, t=bt_theme) -> void:
 	
 func build_gui() -> void:
 	print('[connect_home]->build_gui')
-	win_size = DisplayServer.window_get_size() - Vector2i(100, 100)
-	$bd_color.custom_minimum_size = win_size + Vector2i(100, 100)
+	win_size = DisplayServer.window_get_size() - Vector2i(100, 0)
+	$bd_color.custom_minimum_size = win_size + Vector2i(100, 0)
 	print("%s, %s"%[win_size.x, win_size.y])
 	var vbox_top:VBoxContainer = VBoxContainer.new()
 	vbox_top.name = 'TOP'
 	vbox_top.size = win_size
-	vbox_top.position = Vector2i(50, 100)
+	vbox_top.position = Vector2i(50, 0)
 	
 	var hbox_l0:HBoxContainer = HBoxContainer.new()
 	hbox_l0.name = 'title'
@@ -453,7 +453,7 @@ func build_gui() -> void:
 	setting_bt.add_theme_stylebox_override("hover", _make_round_style(Color(0.78, 0.85, 0.95, 1.0)))
 	setting_bt.add_theme_stylebox_override("pressed", _make_round_style(Color(0.7, 0.78, 0.9, 1.0)))
 	setting_bt.connect("pressed", _on_setting_bt_pressed)
-	hbox_l1.add_child(setting_bt)
+	hbox_l0.add_child(setting_bt)
 	
 	### l1 login
 	var hbox_login_l1:HBoxContainer = HBoxContainer.new()
