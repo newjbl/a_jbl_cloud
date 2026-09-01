@@ -163,7 +163,7 @@ var thread_list:Array = []
 func _ready() -> void:
 	comtimer = $Timer
 	comtimer.connect("timeout", _on_long_press_timeout)
-	$bd_color.color = Color(0.818, 0.818, 0.818, 1.0)
+	$bd_color.color = Color(0.98, 0.965, 0.94, 1.0)
 	debug_on_win = true if OS.get_name() == 'Windows' else false
 	log_window = preload("res://class/log_window.tscn").instantiate()
 	add_child(log_window)
@@ -353,16 +353,42 @@ func build_gui() -> void:
 	vbox_top.add_child(vbox_l1_1_login)
 	vbox_top.add_child(vbox_l1_2_setting)
 	vbox_top.add_child(vbox_l1_3_uploadlist)
-	## 状态行1: 文件数量(图标+文字)
+	## 状态行1: 文件数量(图标+文字), 整体圆弧框
+	var stat_panel:PanelContainer = PanelContainer.new()
+	stat_panel.name = 'files_stat_panel'
+	var stat_sb:StyleBoxFlat = StyleBoxFlat.new()
+	stat_sb.bg_color = Color(0.85, 0.9, 0.97, 1.0)
+	stat_sb.set_corner_radius_all(14)
+	stat_sb.set_border_width_all(0)
+	stat_sb.content_margin_left = 16.0
+	stat_sb.content_margin_right = 16.0
+	stat_sb.content_margin_top = 4.0
+	stat_sb.content_margin_bottom = 4.0
+	stat_panel.add_theme_stylebox_override('panel', stat_sb)
+	stat_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var hbox_stat:HBoxContainer = HBoxContainer.new()
 	hbox_stat.name = 'files_stat_row'
 	hbox_stat.alignment = BoxContainer.ALIGNMENT_CENTER
 	hbox_stat.add_theme_constant_override('separation', 30)
+	hbox_stat.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	stat_cloud_label = _build_stat_item(hbox_stat, 'res://db/on_server.png')
 	stat_both_label = _build_stat_item(hbox_stat, 'res://db/on_server.png', 'res://db/on_ue.png')
 	stat_ue_label = _build_stat_item(hbox_stat, 'res://db/on_ue.png')
-	vbox_top.add_child(hbox_stat)
-	## 状态行2: 最后上传/扫描时间
+	stat_panel.add_child(hbox_stat)
+	vbox_top.add_child(stat_panel)
+	## 状态行2: 最后上传/扫描时间, 圆弧框
+	var time_panel:PanelContainer = PanelContainer.new()
+	time_panel.name = 'files_time_panel'
+	var time_sb:StyleBoxFlat = StyleBoxFlat.new()
+	time_sb.bg_color = Color(0.85, 0.9, 0.97, 1.0)
+	time_sb.set_corner_radius_all(14)
+	time_sb.set_border_width_all(0)
+	time_sb.content_margin_left = 16.0
+	time_sb.content_margin_right = 16.0
+	time_sb.content_margin_top = 4.0
+	time_sb.content_margin_bottom = 4.0
+	time_panel.add_theme_stylebox_override('panel', time_sb)
+	time_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var hbox_time:HBoxContainer = HBoxContainer.new()
 	hbox_time.name = 'files_time_row'
 	files_time_label = Label.new()
@@ -373,7 +399,9 @@ func build_gui() -> void:
 	files_time_label.add_theme_font_size_override('font_size', DEFAULT_FONT_HALF_SIZE)
 	files_time_label.add_theme_color_override('font_color', Color.BLACK)
 	hbox_time.add_child(files_time_label)
-	vbox_top.add_child(hbox_time)
+	hbox_time.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	time_panel.add_child(hbox_time)
+	vbox_top.add_child(time_panel)
 	vbox_top.add_child(hbox_l2)
 	vbox_top.add_child(vbox_l3)
 	
@@ -383,6 +411,9 @@ func build_gui() -> void:
 	login_bt.name = 'login_bt'
 	type_display_style(login_bt, DEFAULT_FONT_SIZE)
 	login_bt.custom_minimum_size = Vector2(100, 50)
+	login_bt.add_theme_stylebox_override("normal", _make_round_style(Color(0.85, 0.9, 0.97, 1.0)))
+	login_bt.add_theme_stylebox_override("hover", _make_round_style(Color(0.78, 0.85, 0.95, 1.0)))
+	login_bt.add_theme_stylebox_override("pressed", _make_round_style(Color(0.7, 0.78, 0.9, 1.0)))
 	login_bt.connect("pressed", _on_login_bt_pressed)
 	hbox_l0.add_child(login_bt)
 	
@@ -390,6 +421,7 @@ func build_gui() -> void:
 	scan_bt.text = '扫描文件'
 	scan_bt.name = 'scan_bt'
 	type_display_style(scan_bt, DEFAULT_FONT_SIZE)
+	_style_round_button(scan_bt, _create_scan_icon())
 	scan_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scan_bt.connect("pressed", _on_scan_bt_pressed)
 	hbox_l1.add_child(scan_bt)
@@ -398,6 +430,7 @@ func build_gui() -> void:
 	upload_bt.text = '上传文件'
 	upload_bt.name = 'upload_bt'
 	type_display_style(upload_bt, DEFAULT_FONT_SIZE)
+	_style_round_button(upload_bt, _create_upload_icon())
 	upload_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	upload_bt.connect("pressed", _on_upload_bt_pressed)
 	hbox_l1.add_child(upload_bt)
@@ -406,6 +439,7 @@ func build_gui() -> void:
 	delete_bt.text = '清理文件'
 	delete_bt.name = 'delete_bt'
 	type_display_style(delete_bt, DEFAULT_FONT_SIZE)
+	_style_round_button(delete_bt, _create_delete_icon())
 	delete_bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	delete_bt.connect("pressed", _on_delete_bt_pressed)
 	hbox_l1.add_child(delete_bt)
@@ -414,6 +448,10 @@ func build_gui() -> void:
 	setting_bt.text = '···'
 	setting_bt.name = 'setting'
 	type_display_style(setting_bt, DEFAULT_FONT_SIZE)
+	setting_bt.custom_minimum_size = Vector2(60, 40)
+	setting_bt.add_theme_stylebox_override("normal", _make_round_style(Color(0.85, 0.9, 0.97, 1.0)))
+	setting_bt.add_theme_stylebox_override("hover", _make_round_style(Color(0.78, 0.85, 0.95, 1.0)))
+	setting_bt.add_theme_stylebox_override("pressed", _make_round_style(Color(0.7, 0.78, 0.9, 1.0)))
 	setting_bt.connect("pressed", _on_setting_bt_pressed)
 	hbox_l1.add_child(setting_bt)
 	
@@ -923,6 +961,9 @@ func build_gui() -> void:
 	var filter_type:OptionButton = OptionButton.new()
 	filter_type.name = 'filter_type'
 	type_display_style(filter_type, DEFAULT_FONT_HALF_SIZE)
+	filter_type.add_theme_stylebox_override("normal", _make_round_style(Color(0.85, 0.9, 0.97, 1.0), 14))
+	filter_type.add_theme_stylebox_override("hover", _make_round_style(Color(0.78, 0.85, 0.95, 1.0), 14))
+	filter_type.add_theme_stylebox_override("pressed", _make_round_style(Color(0.7, 0.78, 0.9, 1.0), 14))
 	filter_type.add_item("图片", 0)
 	filter_type.add_item("视频", 1)
 	filter_type.add_item("图片和视频", 2)
@@ -931,12 +972,40 @@ func build_gui() -> void:
 	filter_type.add_item("所有", 5)
 	var filter_type_pop:PopupMenu = filter_type.get_popup()
 	type_display_style(filter_type_pop, DEFAULT_FONT_HALF_SIZE)
+	var pop_sb:StyleBoxFlat = StyleBoxFlat.new()
+	pop_sb.bg_color = Color(0.85, 0.9, 0.97, 1.0)
+	pop_sb.set_corner_radius_all(10)
+	pop_sb.set_border_width_all(0)
+	pop_sb.content_margin_left = 8.0
+	pop_sb.content_margin_right = 8.0
+	pop_sb.content_margin_top = 6.0
+	pop_sb.content_margin_bottom = 6.0
+	filter_type_pop.add_theme_stylebox_override('panel', pop_sb)
+	filter_type_pop.add_theme_color_override('font_color', Color.BLACK)
+	filter_type_pop.add_theme_color_override('font_hover_color', Color.BLACK)
+	filter_type_pop.add_theme_stylebox_override('hover', _make_round_style(Color(0.78, 0.85, 0.95, 1.0), 8))
 	filter_type.connect("item_selected", _on_filter_type_toggled.bind(filter_type))
 	hbox_l2.add_child(filter_type)
+	var search_panel:PanelContainer = PanelContainer.new()
+	search_panel.name = 'search_panel'
+	var search_sb:StyleBoxFlat = StyleBoxFlat.new()
+	search_sb.bg_color = Color(0.85, 0.9, 0.97, 1.0)
+	search_sb.set_corner_radius_all(14)
+	search_sb.set_border_width_all(0)
+	search_sb.content_margin_left = 10.0
+	search_sb.content_margin_right = 10.0
+	search_sb.content_margin_top = 4.0
+	search_sb.content_margin_bottom = 4.0
+	search_panel.add_theme_stylebox_override('panel', search_sb)
+	search_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var search_box:HBoxContainer = HBoxContainer.new()
+	search_box.name = 'search_box'
+	search_box.add_theme_constant_override('separation', 8)
+	search_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var input_txt:LineEdit = LineEdit.new()
 	input_txt.name = 'search_input'
 	type_display_style(input_txt, DEFAULT_FONT_SIZE, input_theme)
-	hbox_l2.add_child(input_txt)
+	search_box.add_child(input_txt)
 	input_txt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var cfm_bt:Button = Button.new()
 	cfm_bt.text = '查询'
@@ -945,7 +1014,9 @@ func build_gui() -> void:
 	cfm_bt.add_theme_stylebox_override("normal", bt_theme)
 	cfm_bt.add_theme_font_size_override('font_size', DEFAULT_FONT_SIZE)
 	cfm_bt.connect('pressed', _on_search_bt_pressed.bind(input_txt))
-	hbox_l2.add_child(cfm_bt)
+	search_box.add_child(cfm_bt)
+	search_panel.add_child(search_box)
+	hbox_l2.add_child(search_panel)
 	
 	### L3
 	## add by add_one_block
@@ -975,8 +1046,41 @@ func build_gui() -> void:
 
 func _set_all_black(node:Node) -> void:
 	for child in node.get_children():
-		if child is Label or child is Button or child is CheckBox or child is LineEdit or child is OptionButton:
+		if child is Label:
+			var ls:LabelSettings = child.label_settings
+			if ls:
+				var new_ls:LabelSettings = ls.duplicate()
+				new_ls.font_color = Color.BLACK
+				child.label_settings = new_ls
+			else:
+				child.add_theme_color_override('font_color', Color.BLACK)
+		elif child is CheckBox:
+			child.focus_mode = Control.FOCUS_NONE
 			child.add_theme_color_override('font_color', Color.BLACK)
+			child.add_theme_color_override('font_pressed_color', Color(0.0, 0.4, 0.2, 1.0))
+			child.add_theme_color_override('font_hover_color', Color.BLACK)
+			child.add_theme_color_override('font_hover_pressed_color', Color(0.0, 0.4, 0.2, 1.0))
+			child.add_theme_color_override('font_focus_color', Color.BLACK)
+		elif child is Button:
+			child.focus_mode = Control.FOCUS_NONE
+			child.add_theme_color_override('font_color', Color.BLACK)
+			child.add_theme_color_override('font_hover_color', Color.BLACK)
+			child.add_theme_color_override('font_pressed_color', Color.BLACK)
+			child.add_theme_color_override('font_focus_color', Color.BLACK)
+		elif child is LineEdit:
+			child.add_theme_color_override('font_color', Color.BLACK)
+			child.add_theme_color_override('placeholder_font_color', Color(0.3, 0.3, 0.3, 1.0))
+		elif child is OptionButton:
+			child.focus_mode = Control.FOCUS_NONE
+			child.add_theme_color_override('font_color', Color.BLACK)
+			child.add_theme_color_override('font_hover_color', Color.BLACK)
+			child.add_theme_color_override('font_pressed_color', Color.BLACK)
+			child.add_theme_color_override('font_focus_color', Color.BLACK)
+			var pop:PopupMenu = child.get_popup()
+			if pop:
+				pop.add_theme_color_override('font_color', Color.BLACK)
+				pop.add_theme_color_override('font_hover_color', Color.BLACK)
+				pop.add_theme_color_override('font_focus_color', Color.BLACK)
 		_set_all_black(child)
 
 func _scale_popup(node:Node, factor:float = 2.0) -> void:
@@ -1447,10 +1551,9 @@ func _build_cleanup_overlay() -> PanelContainer:
 	panel.z_index = 120
 	panel.visible = false
 	var sb:StyleBoxFlat = StyleBoxFlat.new()
-	sb.bg_color = Color(0.95, 0.95, 0.95, 0.98)
+	sb.bg_color = Color(0.85, 0.9, 0.97, 0.98)
 	sb.set_corner_radius_all(12)
-	sb.set_border_width_all(2)
-	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.set_border_width_all(0)
 	sb.content_margin_left = 20.0
 	sb.content_margin_right = 20.0
 	sb.content_margin_top = 16.0
@@ -1544,10 +1647,9 @@ func _build_upload_batch_overlay() -> PanelContainer:
 	panel.z_index = 120
 	panel.visible = false
 	var sb:StyleBoxFlat = StyleBoxFlat.new()
-	sb.bg_color = Color(0.95, 0.95, 0.95, 0.98)
+	sb.bg_color = Color(0.85, 0.9, 0.97, 0.98)
 	sb.set_corner_radius_all(12)
-	sb.set_border_width_all(2)
-	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.set_border_width_all(0)
 	sb.content_margin_left = 20.0
 	sb.content_margin_right = 20.0
 	sb.content_margin_top = 16.0
@@ -1679,10 +1781,9 @@ func _build_scan_dir_select_overlay() -> PanelContainer:
 	panel.z_index = 120
 	panel.visible = false
 	var sb:StyleBoxFlat = StyleBoxFlat.new()
-	sb.bg_color = Color(0.95, 0.95, 0.95, 0.98)
+	sb.bg_color = Color(0.85, 0.9, 0.97, 0.98)
 	sb.set_corner_radius_all(12)
-	sb.set_border_width_all(2)
-	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.set_border_width_all(0)
 	sb.content_margin_left = 20.0
 	sb.content_margin_right = 20.0
 	sb.content_margin_top = 16.0
@@ -1998,10 +2099,9 @@ func _build_menu_overlay() -> PanelContainer:
 	panel.z_index = 100
 	panel.visible = false
 	var sb:StyleBoxFlat = StyleBoxFlat.new()
-	sb.bg_color = Color(0.95, 0.95, 0.95, 0.98)
+	sb.bg_color = Color(0.85, 0.9, 0.97, 0.98)
 	sb.set_corner_radius_all(12)
-	sb.set_border_width_all(2)
-	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.set_border_width_all(0)
 	sb.content_margin_left = 8.0
 	sb.content_margin_right = 8.0
 	sb.content_margin_top = 8.0
@@ -2066,8 +2166,7 @@ func _build_details_overlay() -> PanelContainer:
 	var sb:StyleBoxFlat = StyleBoxFlat.new()
 	sb.bg_color = Color(0.96, 0.96, 0.96, 0.99)
 	sb.set_corner_radius_all(14)
-	sb.set_border_width_all(2)
-	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.set_border_width_all(0)
 	sb.content_margin_left = 20.0
 	sb.content_margin_right = 20.0
 	sb.content_margin_top = 16.0
@@ -2290,10 +2389,9 @@ func _build_confirm_download_overlay() -> PanelContainer:
 	panel.z_index = 120
 	panel.visible = false
 	var sb:StyleBoxFlat = StyleBoxFlat.new()
-	sb.bg_color = Color(0.95, 0.95, 0.95, 0.98)
+	sb.bg_color = Color(0.85, 0.9, 0.97, 0.98)
 	sb.set_corner_radius_all(12)
-	sb.set_border_width_all(2)
-	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.set_border_width_all(0)
 	sb.content_margin_left = 20.0
 	sb.content_margin_right = 20.0
 	sb.content_margin_top = 16.0
@@ -2387,10 +2485,9 @@ func _build_download_progress_overlay() -> PanelContainer:
 	panel.z_index = 120
 	panel.visible = false
 	var sb:StyleBoxFlat = StyleBoxFlat.new()
-	sb.bg_color = Color(0.95, 0.95, 0.95, 0.98)
+	sb.bg_color = Color(0.85, 0.9, 0.97, 0.98)
 	sb.set_corner_radius_all(12)
-	sb.set_border_width_all(2)
-	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.set_border_width_all(0)
 	sb.content_margin_left = 20.0
 	sb.content_margin_right = 20.0
 	sb.content_margin_top = 16.0
@@ -2464,6 +2561,81 @@ func _point_in_triangle(p:Vector2, a:Vector2, b:Vector2, c:Vector2) -> bool:
 	var v:float = (dot00 * dot12 - dot01 * dot02) * inv
 	return (u >= 0.0) and (v >= 0.0) and (u + v <= 1.0)
 
+func _create_scan_icon() -> Texture2D:
+	## 放大镜
+	var img := Image.create(48, 48, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var col := Color(0.2, 0.4, 0.8, 1.0)
+	var center := Vector2(21, 21)
+	for y in range(48):
+		for x in range(48):
+			var d := Vector2(x + 0.5, y + 0.5) - center
+			var dl := d.length()
+			if dl >= 8.0 and dl <= 12.0:
+				img.set_pixel(x, y, col)
+	for t in range(14):
+		var bx:int = 29 + t
+		var by:int = 29 + t
+		for dx in range(-2, 3):
+			for dy in range(-2, 3):
+				var px:int = bx + dx
+				var py:int = by + dy
+				if px >= 0 and px < 48 and py >= 0 and py < 48:
+					img.set_pixel(px, py, col)
+	return ImageTexture.create_from_image(img)
+
+func _create_upload_icon() -> Texture2D:
+	## 向上箭头
+	var img := Image.create(48, 48, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var col := Color(0.2, 0.4, 0.8, 1.0)
+	for y in range(20, 42):
+		for x in range(21, 28):
+			img.set_pixel(x, y, col)
+	for y in range(10, 21):
+		var half:int = y - 10
+		for x in range(24 - half, 25 + half):
+			img.set_pixel(x, y, col)
+	return ImageTexture.create_from_image(img)
+
+func _create_delete_icon() -> Texture2D:
+	## 垃圾桶
+	var img := Image.create(48, 48, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var col := Color(0.2, 0.4, 0.8, 1.0)
+	## 盖子
+	for y in range(20, 27):
+		for x in range(13, 36):
+			img.set_pixel(x, y, col)
+	## 桶身
+	for y in range(27, 44):
+		for x in range(16, 33):
+			img.set_pixel(x, y, col)
+	## 白色竖纹
+	for y in range(27, 44):
+		for x in [20, 24, 28]:
+			img.set_pixel(x, y, Color(1, 1, 1, 1))
+	return ImageTexture.create_from_image(img)
+
+func _make_round_style(bg:Color, radius:float = 18.0) -> StyleBoxFlat:
+	var sb:StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = bg
+	sb.set_corner_radius_all(radius)
+	sb.set_border_width_all(0)
+	sb.content_margin_left = 10.0
+	sb.content_margin_right = 10.0
+	return sb
+
+func _style_round_button(bt:Button, icon_tex:Texture2D) -> void:
+	bt.icon = icon_tex
+	bt.expand_icon = true
+	bt.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	bt.add_theme_constant_override('icon_max_width', 30)
+	bt.add_theme_stylebox_override("normal", _make_round_style(Color(0.85, 0.9, 0.97, 1.0)))
+	bt.add_theme_stylebox_override("hover", _make_round_style(Color(0.78, 0.85, 0.95, 1.0)))
+	bt.add_theme_stylebox_override("pressed", _make_round_style(Color(0.7, 0.78, 0.9, 1.0)))
+	bt.add_theme_color_override('font_color', Color.BLACK)
+
 func _create_warning_texture() -> Texture2D:
 	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
@@ -2506,10 +2678,9 @@ func _build_upload_details_overlay() -> PanelContainer:
 	panel.z_index = 120
 	panel.visible = false
 	var sb:StyleBoxFlat = StyleBoxFlat.new()
-	sb.bg_color = Color(0.95, 0.95, 0.95, 0.98)
+	sb.bg_color = Color(0.85, 0.9, 0.97, 0.98)
 	sb.set_corner_radius_all(12)
-	sb.set_border_width_all(2)
-	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.set_border_width_all(0)
 	sb.content_margin_left = 20.0
 	sb.content_margin_right = 20.0
 	sb.content_margin_top = 16.0
@@ -2807,10 +2978,9 @@ func _build_scan_details_overlay() -> PanelContainer:
 	panel.z_index = 120
 	panel.visible = false
 	var sb:StyleBoxFlat = StyleBoxFlat.new()
-	sb.bg_color = Color(0.95, 0.95, 0.95, 0.98)
+	sb.bg_color = Color(0.85, 0.9, 0.97, 0.98)
 	sb.set_corner_radius_all(12)
-	sb.set_border_width_all(2)
-	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.set_border_width_all(0)
 	sb.content_margin_left = 20.0
 	sb.content_margin_right = 20.0
 	sb.content_margin_top = 16.0
@@ -3442,10 +3612,9 @@ func _build_cleanup_result_overlay() -> PanelContainer:
 	panel.z_index = 120
 	panel.visible = false
 	var sb:StyleBoxFlat = StyleBoxFlat.new()
-	sb.bg_color = Color(0.95, 0.95, 0.95, 0.98)
+	sb.bg_color = Color(0.85, 0.9, 0.97, 0.98)
 	sb.set_corner_radius_all(12)
-	sb.set_border_width_all(2)
-	sb.border_color = Color(0.3, 0.3, 0.3, 1.0)
+	sb.set_border_width_all(0)
 	sb.content_margin_left = 20.0
 	sb.content_margin_right = 20.0
 	sb.content_margin_top = 16.0
