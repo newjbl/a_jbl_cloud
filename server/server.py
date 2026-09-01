@@ -8,16 +8,69 @@ import hashlib
 from datetime import datetime
 from pathlib import Path
 import zlib
+import configparser
 
-SERVER_HOST = '0.0.0.0'
-FILE_SAVE_DIR = "./files_root_dir"
-TEMP_FILE_SUFFIX = ".jpart"
-MAX_CONNECTIONS = 10
+# ---------- 配置加载: 从 server.ini 读取, 缺失/非法回退默认值 ----------
+CONFIG_PATH = Path(__file__).resolve().parent / "server.ini"
 
-UE_UPLOAD_PORT = 6666
-UE_UPLOAD_BLOCK_SIZE = 1024
-UE_TIMEOUT = 5
-UE_DOWNLOAD_PORT = 7777
+_DEFAULT_CONFIG = {
+    "server": {
+        "host": "0.0.0.0",
+        "file_save_dir": "./files_root_dir",
+        "temp_file_suffix": ".jpart",
+        "max_connections": 10,
+    },
+    "transfer": {
+        "upload_port": 6666,
+        "upload_block_size": 1024,
+        "timeout": 5,
+        "download_port": 7777,
+    },
+}
+
+def load_server_config(config_path=None):
+    """读取 server.ini 配置; 文件/某项缺失或值非法时回退到默认值。"""
+    parser = configparser.ConfigParser()
+    path = Path(config_path) if config_path else CONFIG_PATH
+    if path.exists():
+        parser.read(path, encoding="utf-8")
+        print("[%s]server 使用配置文件: %s" % (datetime.now(), path))
+    else:
+        print("[%s]配置文件不存在: %s, 使用默认配置" % (datetime.now(), path))
+
+    result = {}
+    for section, kv in _DEFAULT_CONFIG.items():
+        if not parser.has_section(section):
+            result.update(kv)
+            continue
+        for key, default in kv.items():
+            if not parser.has_option(section, key):
+                result[key] = default
+                continue
+            raw = parser.get(section, key).strip()
+            if isinstance(default, bool):
+                result[key] = raw.lower() in ("1", "true", "yes", "on")
+            elif isinstance(default, int):
+                try:
+                    result[key] = int(raw)
+                except ValueError:
+                    print("[%s]配置项 %s.%s 值非法: %r, 回退默认值 %s" % (datetime.now(), section, key, raw, default))
+                    result[key] = default
+            else:
+                result[key] = raw
+    return result
+
+_CONFIG = load_server_config()
+
+SERVER_HOST = _CONFIG["host"]
+FILE_SAVE_DIR = _CONFIG["file_save_dir"]
+TEMP_FILE_SUFFIX = _CONFIG["temp_file_suffix"]
+MAX_CONNECTIONS = _CONFIG["max_connections"]
+
+UE_UPLOAD_PORT = _CONFIG["upload_port"]
+UE_UPLOAD_BLOCK_SIZE = _CONFIG["upload_block_size"]
+UE_TIMEOUT = _CONFIG["timeout"]
+UE_DOWNLOAD_PORT = _CONFIG["download_port"]
 ERROR_CODE_DIC = {
     "ERROR1":'FILE DIC ERROR',
     "ERROR2":'ALREADY COMPLETE',
